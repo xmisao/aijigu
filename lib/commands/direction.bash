@@ -227,6 +227,12 @@ command_direction_auto() {
     direction_name="$(basename "${direction_file:-unknown}" .md)"
 
     echo "--- Starting direction #${next_id}"
+
+    # Slack通知: 開始
+    if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
+      "$aijigu" notify slack "[aijigu auto] Direction #${next_id} (${direction_name}) 開始" 2>/dev/null || true
+    fi
+
     set +e
     "$aijigu" direction run "$next_id" | "$aijigu" utils pretty_claude_stream_json
     local run_exit=${PIPESTATUS[0]}
@@ -236,6 +242,15 @@ command_direction_auto() {
       echo "--- Direction #${next_id} exited with code ${run_exit}"
     else
       echo "--- Direction #${next_id} completed"
+    fi
+
+    # Slack通知: 終了
+    if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
+      if [[ $run_exit -ne 0 ]]; then
+        "$aijigu" notify slack "[aijigu auto] Direction #${next_id} (${direction_name}) 終了 (exit code: ${run_exit})" 2>/dev/null || true
+      else
+        "$aijigu" notify slack "[aijigu auto] Direction #${next_id} (${direction_name}) 完了" 2>/dev/null || true
+      fi
     fi
 
     # Track execution history (keep last 10)
