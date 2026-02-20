@@ -205,8 +205,14 @@ command_direction_auto() {
     next_id="$("$aijigu" direction next)" || true
 
     if [[ -z "$next_id" ]]; then
-      echo "--- No pending directions. Press Enter to check again (Ctrl+C to quit)."
-      read -r
+      echo "--- No pending directions. Polling ${AIJIGU_DIRECTION_DIR} for new files (Ctrl+C to quit)..."
+      while true; do
+        sleep 2
+        if ls "$AIJIGU_DIRECTION_DIR"/[0-9]*-*.md &>/dev/null; then
+          echo "--- New direction file detected"
+          break
+        fi
+      done
       continue
     fi
 
