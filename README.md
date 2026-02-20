@@ -1,4 +1,4 @@
-# aijigu
+# aijigu (AI Jig Utilities)
 
 Automation framework powered by Claude CLI.
 
@@ -14,6 +14,11 @@ Set `AIJIGU_DIRECTION_DIR` to the path where direction files are stored.
 ## Commands
 
 - `aijigu run <prompt>` - Run a prompt via `claude -p`.
+
+### `aijigu direction`
+
+Manage and execute direction files — task definitions that Claude works through autonomously.
+
 - `aijigu direction init` - Initialize the direction directory.
 - `aijigu direction add -f <file>` - Create a new direction from a file.
 - `aijigu direction next` - Show the ID of the next direction to work on.
