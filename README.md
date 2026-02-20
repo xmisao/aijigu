@@ -20,7 +20,7 @@ Set `AIJIGU_DIRECTION_DIR` to the path where direction files are stored.
 Manage and execute direction files — task definitions that Claude works through autonomously.
 
 - `aijigu direction init` - Initialize the direction directory.
-- `aijigu direction add -f <file>` - Create a new direction from a file.
+- `aijigu direction add [-f <file> | -m <text>]` - Create a new direction from a file or text.
 - `aijigu direction next` - Show the ID of the next direction to work on.
 - `aijigu direction run <id>` - Execute a direction by ID.
 - `aijigu direction auto` - Continuously execute directions in sequence.

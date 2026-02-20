@@ -72,33 +72,40 @@ command_direction_add() {
     exit 1
   fi
 
-  local file=""
+  local file="" message=""
   OPTIND=1
-  while getopts "f:" opt; do
+  while getopts "f:m:" opt; do
     case "$opt" in
       f) file="$OPTARG" ;;
-      *) echo "Usage: aijigu direction add -f <file>" >&2; exit 1 ;;
+      m) message="$OPTARG" ;;
+      *) echo "Usage: aijigu direction add [-f <file> | -m <text>]" >&2; exit 1 ;;
     esac
   done
 
-  if [[ -z "$file" ]]; then
-    echo "Usage: aijigu direction add -f <file>" >&2
+  if [[ -z "$file" && -z "$message" ]]; then
+    echo "Usage: aijigu direction add [-f <file> | -m <text>]" >&2
     exit 1
   fi
 
-  if [[ ! -f "$file" ]]; then
-    echo "Error: File not found: $file" >&2
-    exit 1
+  # Build the content source part of the prompt
+  local content_instruction
+  if [[ -n "$file" ]]; then
+    if [[ ! -f "$file" ]]; then
+      echo "Error: File not found: $file" >&2
+      exit 1
+    fi
+    file="$(cd "$(dirname "$file")" && pwd)/$(basename "$file")"
+    content_instruction="1. Read the task content from $file."
+  else
+    content_instruction="1. The task content is:
+$message"
   fi
-
-  # Resolve to absolute path for claude
-  file="$(cd "$(dirname "$file")" && pwd)/$(basename "$file")"
 
   set +e
   CLAUDECODE= claude -p "Create a new direction file in $AIJIGU_DIRECTION_DIR.
 
 Steps:
-1. Read the task content from $file.
+$content_instruction
 2. List existing .md files in $AIJIGU_DIRECTION_DIR and $AIJIGU_DIRECTION_DIR/completed to find the highest numeric ID prefix. The next ID is max + 1, starting from 1 if none exist. Do not zero-pad the ID.
 3. Generate a short, lowercase, hyphen-separated title from the task content in the same language as the input (e.g. 'setup-database' for English, 'データベース構築' for Japanese).
 4. Write the task content to $AIJIGU_DIRECTION_DIR/<id>-<title>.md.
