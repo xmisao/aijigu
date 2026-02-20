@@ -29,6 +29,10 @@ case "$COMMAND" in
     source "$AIJIGU_ROOT/lib/commands/run.bash"
     command_run "$@"
     ;;
+  direction)
+    source "$AIJIGU_ROOT/lib/commands/direction.bash"
+    command_direction "$@"
+    ;;
   *)
     echo "${PROGRAM_NAME}: unknown command '${COMMAND}'" >&2
     usage >&2
