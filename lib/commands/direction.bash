@@ -16,6 +16,9 @@ command_direction() {
     add)
       command_direction_add "$@"
       ;;
+    run)
+      command_direction_run "$@"
+      ;;
     *)
       echo "aijigu direction: unknown subcommand '${subcommand}'" >&2
       exit 1
@@ -99,4 +102,48 @@ Steps:
   set -e
 
   exit "$claude_exit"
+}
+
+command_direction_run() {
+  if [[ -z "${AIJIGU_DIRECTION_DIR:-}" ]]; then
+    echo "Error: AIJIGU_DIRECTION_DIR is not set." >&2
+    exit 1
+  fi
+
+  if [[ $# -eq 0 ]]; then
+    echo "Usage: aijigu direction run <id>" >&2
+    exit 1
+  fi
+
+  local id="$1"
+  shift
+
+  # Find direction file matching the ID prefix
+  local match
+  match="$(ls "$AIJIGU_DIRECTION_DIR"/${id}-*.md 2>/dev/null | head -1 || true)"
+  if [[ -z "$match" ]]; then
+    echo "Error: No direction found with ID: $id" >&2
+    exit 1
+  fi
+
+  local prompt
+  prompt="Complete the direction #${id}.
+
+The direction file is located at: ${match}
+The completed directory is: ${AIJIGU_DIRECTION_DIR}/completed
+
+Follow these steps. All output must be in the same language as the direction.
+
+1. Read and understand direction #${id}.
+2. Carry out the work as directed.
+3. Append work notes to the direction file.
+4. If the work is fully completed, move the direction file to the completed directory.
+5. If the work is within a Git-managed area and fully completed, commit the changes.
+
+If you cannot complete the work, still follow the same steps to record what was done.
+Never use Plan mode.
+The user will not provide any additional instructions or approvals. Work autonomously."
+
+  source "$AIJIGU_ROOT/lib/commands/run.bash"
+  command_run "$prompt" "$@"
 }
