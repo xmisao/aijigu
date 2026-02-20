@@ -17,3 +17,21 @@ if [[ $# -eq 0 ]]; then
   usage
   exit 1
 fi
+
+AIJIGU_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+export AIJIGU_ROOT
+
+COMMAND="$1"
+shift
+
+case "$COMMAND" in
+  run)
+    source "$AIJIGU_ROOT/lib/commands/run.bash"
+    command_run "$@"
+    ;;
+  *)
+    echo "${PROGRAM_NAME}: unknown command '${COMMAND}'" >&2
+    usage >&2
+    exit 1
+    ;;
+esac
