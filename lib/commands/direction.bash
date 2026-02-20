@@ -110,7 +110,7 @@ $message"
 Steps:
 $content_instruction
 2. List existing .md files in $AIJIGU_DIRECTION_DIR and $AIJIGU_DIRECTION_DIR/completed to find the highest numeric ID prefix. The next ID is max + 1, starting from 1 if none exist. Do not zero-pad the ID.
-3. Generate a short, lowercase, hyphen-separated title from the task content in the same language as the input (e.g. 'setup-database' for English, 'データベース構築' for Japanese). Non-ASCII characters are allowed.
+3. Generate a short, lowercase, hyphen-separated title from the task content in the same language as the input (e.g. 'setup-database'). Non-ASCII characters are allowed in the title.
 4. Write the task content to $AIJIGU_DIRECTION_DIR/<id>-<title>.md.
 5. Output only the created filename (e.g. '1-setup-database.md') to confirm." \
     --allowedTools "Bash,Read,Write" --output-format text --dangerously-skip-permissions
