@@ -22,6 +22,9 @@ command_direction() {
     next)
       command_direction_next "$@"
       ;;
+    auto)
+      command_direction_auto "$@"
+      ;;
     *)
       echo "aijigu direction: unknown subcommand '${subcommand}'" >&2
       exit 1
@@ -157,14 +160,59 @@ command_direction_next() {
     exit 1
   fi
 
+  local result
   set +e
-  CLAUDECODE= claude -p "Look at the direction files in $AIJIGU_DIRECTION_DIR (not in the completed/ subdirectory).
+  result="$(CLAUDECODE= claude -p "Look at the direction files in $AIJIGU_DIRECTION_DIR (not in the completed/ subdirectory).
 Read their contents and determine which direction should be worked on next, considering priority and dependencies.
 Output only the numeric ID of the chosen direction, nothing else.
 If there are no pending directions, output nothing." \
-    --allowedTools "Bash,Read" --output-format text --dangerously-skip-permissions
+    --allowedTools "Bash,Read" --output-format text --dangerously-skip-permissions 2>/dev/null)"
   local claude_exit=$?
   set -e
 
-  exit "$claude_exit"
+  if [[ $claude_exit -ne 0 ]]; then
+    exit "$claude_exit"
+  fi
+
+  # Extract numeric ID from output, ignore non-numeric responses
+  local id
+  id="$(echo "$result" | grep -oE '^[0-9]+$' | head -1)"
+  if [[ -z "$id" ]]; then
+    exit 1
+  fi
+
+  echo "$id"
+}
+
+command_direction_auto() {
+  if [[ -z "${AIJIGU_DIRECTION_DIR:-}" ]]; then
+    echo "Error: AIJIGU_DIRECTION_DIR is not set." >&2
+    exit 1
+  fi
+
+  local aijigu="$AIJIGU_ROOT/bin/aijigu"
+
+  while true; do
+    echo "--- Checking for next direction..."
+    local next_id
+    next_id="$("$aijigu" direction next)" || true
+
+    if [[ -z "$next_id" ]]; then
+      echo "--- No pending directions. Press Enter to check again (Ctrl+C to quit)."
+      read -r
+      continue
+    fi
+
+    echo "--- Starting direction #${next_id}"
+    set +e
+    "$aijigu" direction run "$next_id"
+    local run_exit=$?
+    set -e
+
+    if [[ $run_exit -ne 0 ]]; then
+      echo "--- Direction #${next_id} exited with code ${run_exit}"
+    else
+      echo "--- Direction #${next_id} completed"
+    fi
+  done
 }
