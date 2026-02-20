@@ -201,6 +201,7 @@ command_direction_auto() {
   fi
 
   local aijigu="$AIJIGU_ROOT/bin/aijigu"
+  local -a recent_ids=()
 
   while true; do
     echo "--- Checking for next direction..."
@@ -237,16 +238,26 @@ command_direction_auto() {
       echo "--- Direction #${next_id} completed"
     fi
 
+    # Track execution history (keep last 10)
+    recent_ids+=("$next_id")
+    if [[ ${#recent_ids[@]} -gt 10 ]]; then
+      recent_ids=("${recent_ids[@]:1}")
+    fi
+
+    # Build history JSON array
+    local history_json
+    history_json="[$(IFS=,; echo "${recent_ids[*]}")]"
+
     # Check if completed (file moved to completed/)
     local completed="false"
     if [[ -f "$AIJIGU_DIRECTION_DIR/completed/$(basename "${direction_file:-}")" ]]; then
       completed="true"
     fi
 
-    # Build JSON with direction execution info
+    # Build JSON with direction execution info and history
     local result_json
-    result_json=$(printf '{"id":%s,"name":"%s","exit_code":%s,"completed":%s}' \
-      "$next_id" "$direction_name" "$run_exit" "$completed")
+    result_json=$(printf '{"id":%s,"name":"%s","exit_code":%s,"completed":%s,"history":%s}' \
+      "$next_id" "$direction_name" "$run_exit" "$completed" "$history_json")
 
     echo "--- Checking whether to continue..."
     set +e
@@ -255,8 +266,14 @@ command_direction_auto() {
     set -e
 
     if [[ $continue_exit -ne 0 ]]; then
-      echo "--- Auto loop stopped based on direction result"
-      break
+      echo "--- Auto loop paused based on direction result. Switching to polling..."
+      while true; do
+        sleep 2
+        if ls "$AIJIGU_DIRECTION_DIR"/[0-9]*-*.md &>/dev/null; then
+          echo "--- New direction file detected"
+          break
+        fi
+      done
     fi
   done
 }
@@ -274,11 +291,14 @@ command_direction_continue() {
   result="$(CLAUDECODE= claude -p "あなたはaijigu direction autoループの継続判定を行うエージェントです。
 直近実行されたdirectionの情報がJSON形式で与えられます。内容を読み取り、autoループを継続すべきかどうかを判断してください。
 
+JSONにはhistoryフィールドがあり、直近最大10回の実行済みdirection IDの配列です。同じIDが繰り返し実行されている場合、ループに陥っている可能性があるため停止を検討してください。
+
 判断基準:
 - directionが正常に完了し、次のdirectionを続行しても問題ない場合は継続
 - 致命的なエラーが発生し、人間の介入が必要な場合は停止
 - セキュリティ上の問題や破壊的な操作の失敗があった場合は停止
 - 軽微なエラーや警告のみで作業自体は完了している場合は継続
+- 同じdirection IDがhistory内で繰り返し出現している場合は停止
 
 JSON:
 $json
