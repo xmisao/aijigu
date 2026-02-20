@@ -19,6 +19,9 @@ command_direction() {
     run)
       command_direction_run "$@"
       ;;
+    next)
+      command_direction_next "$@"
+      ;;
     *)
       echo "aijigu direction: unknown subcommand '${subcommand}'" >&2
       exit 1
@@ -146,4 +149,22 @@ The user will not provide any additional instructions or approvals. Work autonom
 
   source "$AIJIGU_ROOT/lib/commands/run.bash"
   command_run "$prompt" "$@"
+}
+
+command_direction_next() {
+  if [[ -z "${AIJIGU_DIRECTION_DIR:-}" ]]; then
+    echo "Error: AIJIGU_DIRECTION_DIR is not set." >&2
+    exit 1
+  fi
+
+  set +e
+  CLAUDECODE= claude -p "Look at the direction files in $AIJIGU_DIRECTION_DIR (not in the completed/ subdirectory).
+Read their contents and determine which direction should be worked on next, considering priority and dependencies.
+Output only the numeric ID of the chosen direction, nothing else.
+If there are no pending directions, output nothing." \
+    --allowedTools "Bash,Read" --output-format text --dangerously-skip-permissions
+  local claude_exit=$?
+  set -e
+
+  exit "$claude_exit"
 }
