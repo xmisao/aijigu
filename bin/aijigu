@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="$(basename "$0")"
+VERSION="0.1.0"
+
+usage() {
+  cat <<EOF
+aijigu - Automation framework powered by Claude CLI
+
+Usage:
+  ${PROGRAM_NAME} <command> [options]
+EOF
+}
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 1
+fi
