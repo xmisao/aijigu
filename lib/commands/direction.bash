@@ -110,7 +110,7 @@ $message"
 Steps:
 $content_instruction
 2. List existing .md files in $AIJIGU_DIRECTION_DIR and $AIJIGU_DIRECTION_DIR/completed to find the highest numeric ID prefix. The next ID is max + 1, starting from 1 if none exist. Do not zero-pad the ID.
-3. Generate a short, lowercase, hyphen-separated title from the task content in the same language as the input (e.g. 'setup-database' for English, 'データベース構築' for Japanese).
+3. Generate a short, lowercase, hyphen-separated title from the task content in the same language as the input (e.g. 'setup-database' for English, 'データベース構築' for Japanese). Non-ASCII characters are allowed.
 4. Write the task content to $AIJIGU_DIRECTION_DIR/<id>-<title>.md.
 5. Output only the created filename (e.g. '1-setup-database.md') to confirm." \
     --allowedTools "Bash,Read,Write" --output-format text --dangerously-skip-permissions
@@ -228,9 +228,9 @@ command_direction_auto() {
 
     echo "--- Starting direction #${next_id}"
 
-    # Slack通知: 開始
+    # Slack notification: started
     if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
-      "$aijigu" notify slack "[aijigu auto] Direction #${next_id} (${direction_name}) 開始" 2>/dev/null || true
+      "$aijigu" notify slack "[aijigu auto] Direction #${next_id} (${direction_name}) started" 2>/dev/null || true
     fi
 
     set +e
@@ -244,12 +244,12 @@ command_direction_auto() {
       echo "--- Direction #${next_id} completed"
     fi
 
-    # Slack通知: 終了
+    # Slack notification: finished
     if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
       if [[ $run_exit -ne 0 ]]; then
-        "$aijigu" notify slack "[aijigu auto] Direction #${next_id} (${direction_name}) 終了 (exit code: ${run_exit})" 2>/dev/null || true
+        "$aijigu" notify slack "[aijigu auto] Direction #${next_id} (${direction_name}) finished (exit code: ${run_exit})" 2>/dev/null || true
       else
-        "$aijigu" notify slack "[aijigu auto] Direction #${next_id} (${direction_name}) 完了" 2>/dev/null || true
+        "$aijigu" notify slack "[aijigu auto] Direction #${next_id} (${direction_name}) completed" 2>/dev/null || true
       fi
     fi
 
@@ -303,22 +303,23 @@ command_direction_continue() {
 
   local result
   set +e
-  result="$(CLAUDECODE= claude -p "あなたはaijigu direction autoループの継続判定を行うエージェントです。
-直近実行されたdirectionの情報がJSON形式で与えられます。内容を読み取り、autoループを継続すべきかどうかを判断してください。
+  result="$(CLAUDECODE= claude -p "You are an agent that decides whether the aijigu direction auto-loop should continue.
 
-JSONにはhistoryフィールドがあり、直近最大10回の実行済みdirection IDの配列です。同じIDが繰り返し実行されている場合、ループに陥っている可能性があるため停止を検討してください。
+You will receive information about the most recently executed direction in JSON format. Read it and decide whether the auto-loop should continue or stop.
 
-判断基準:
-- directionが正常に完了し、次のdirectionを続行しても問題ない場合は継続
-- 致命的なエラーが発生し、人間の介入が必要な場合は停止
-- セキュリティ上の問題や破壊的な操作の失敗があった場合は停止
-- 軽微なエラーや警告のみで作業自体は完了している場合は継続
-- 同じdirection IDがhistory内で繰り返し出現している場合は停止
+The JSON contains a 'history' field: an array of up to the last 10 executed direction IDs. If the same ID appears repeatedly, a stuck loop is likely and you should stop.
+
+Decision criteria:
+- CONTINUE if the direction completed successfully and proceeding to the next one is safe.
+- STOP if a fatal error occurred and human intervention is needed.
+- STOP if there was a security issue or a destructive operation failed.
+- CONTINUE if only minor errors or warnings occurred but the work itself was completed.
+- STOP if the same direction ID appears repeatedly in the history.
 
 JSON:
 $json
 
-回答は必ず「CONTINUE」または「STOP」の一単語のみを出力してください。判断理由は出力しないでください。" \
+You must respond with exactly one word: either CONTINUE or STOP. Do not output any reasoning." \
     --output-format text --dangerously-skip-permissions 2>/dev/null)"
   local claude_exit=$?
   set -e

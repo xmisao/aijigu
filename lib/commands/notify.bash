@@ -36,12 +36,12 @@ command_notify_slack() {
 
   local message="$1"
 
-  # Slackのメッセージ上限に配慮して3800文字で切る
+  # Truncate to 3800 chars to stay within Slack message limits
   if [[ "${#message}" -gt 3800 ]]; then
     message="${message:0:3800}...(truncated)"
   fi
 
-  # JSONエスケープ: python3でjson.dumpsを使い安全にエスケープ
+  # JSON-escape the message safely using python3's json.dumps
   local escaped
   escaped=$(printf '%s' "$message" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
 
