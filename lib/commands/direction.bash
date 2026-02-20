@@ -25,6 +25,9 @@ command_direction() {
     auto)
       command_direction_auto "$@"
       ;;
+    continue)
+      command_direction_continue "$@"
+      ;;
     *)
       echo "aijigu direction: unknown subcommand '${subcommand}'" >&2
       exit 1
@@ -216,6 +219,12 @@ command_direction_auto() {
       continue
     fi
 
+    # Find direction file name for JSON context
+    local direction_file
+    direction_file="$(ls "$AIJIGU_DIRECTION_DIR"/${next_id}-*.md 2>/dev/null | head -1 || true)"
+    local direction_name
+    direction_name="$(basename "${direction_file:-unknown}" .md)"
+
     echo "--- Starting direction #${next_id}"
     set +e
     "$aijigu" direction run "$next_id"
@@ -227,5 +236,68 @@ command_direction_auto() {
     else
       echo "--- Direction #${next_id} completed"
     fi
+
+    # Check if completed (file moved to completed/)
+    local completed="false"
+    if [[ -f "$AIJIGU_DIRECTION_DIR/completed/$(basename "${direction_file:-}")" ]]; then
+      completed="true"
+    fi
+
+    # Build JSON with direction execution info
+    local result_json
+    result_json=$(printf '{"id":%s,"name":"%s","exit_code":%s,"completed":%s}' \
+      "$next_id" "$direction_name" "$run_exit" "$completed")
+
+    echo "--- Checking whether to continue..."
+    set +e
+    "$aijigu" direction continue "$result_json"
+    local continue_exit=$?
+    set -e
+
+    if [[ $continue_exit -ne 0 ]]; then
+      echo "--- Auto loop stopped based on direction result"
+      break
+    fi
   done
+}
+
+command_direction_continue() {
+  if [[ $# -eq 0 ]]; then
+    echo "Usage: aijigu direction continue <json>" >&2
+    exit 1
+  fi
+
+  local json="$1"
+
+  local result
+  set +e
+  result="$(CLAUDECODE= claude -p "あなたはaijigu direction autoループの継続判定を行うエージェントです。
+直近実行されたdirectionの情報がJSON形式で与えられます。内容を読み取り、autoループを継続すべきかどうかを判断してください。
+
+判断基準:
+- directionが正常に完了し、次のdirectionを続行しても問題ない場合は継続
+- 致命的なエラーが発生し、人間の介入が必要な場合は停止
+- セキュリティ上の問題や破壊的な操作の失敗があった場合は停止
+- 軽微なエラーや警告のみで作業自体は完了している場合は継続
+
+JSON:
+$json
+
+回答は必ず「CONTINUE」または「STOP」の一単語のみを出力してください。判断理由は出力しないでください。" \
+    --output-format text --dangerously-skip-permissions 2>/dev/null)"
+  local claude_exit=$?
+  set -e
+
+  if [[ $claude_exit -ne 0 ]]; then
+    exit "$claude_exit"
+  fi
+
+  local answer
+  answer="$(echo "$result" | grep -oE '(CONTINUE|STOP)' | head -1)"
+
+  if [[ "$answer" == "CONTINUE" ]]; then
+    exit 0
+  else
+    exit 1
+  fi
 }
