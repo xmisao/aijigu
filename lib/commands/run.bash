@@ -10,7 +10,7 @@ command_run() {
   shift
 
   set +e
-  claude -p "$prompt" --output-format stream-json --verbose "$@"
+  CLAUDECODE= claude -p "$prompt" --output-format stream-json --verbose "$@"
   local claude_exit=$?
   set -e
 
