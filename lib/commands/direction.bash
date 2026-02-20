@@ -228,8 +228,8 @@ command_direction_auto() {
 
     echo "--- Starting direction #${next_id}"
     set +e
-    "$aijigu" direction run "$next_id"
-    local run_exit=$?
+    "$aijigu" direction run "$next_id" | "$aijigu" utils pretty_claude_stream_json
+    local run_exit=${PIPESTATUS[0]}
     set -e
 
     if [[ $run_exit -ne 0 ]]; then
