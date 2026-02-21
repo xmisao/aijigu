@@ -496,6 +496,10 @@ module Aijigu
                 font-size: 0.9rem;
                 margin-bottom: 1rem;
               }
+              @media (max-width: 768px) {
+                body { padding: 1rem; }
+                .login-box { padding: 1.5rem; }
+              }
             </style>
           </head>
           <body>
@@ -872,6 +876,29 @@ module Aijigu
                 border: 1px dashed #ddd;
                 border-radius: 6px;
                 background: #fafafa;
+              }
+              @media (max-width: 768px) {
+                body { padding: 0.5rem 0.5rem 0; }
+                h1 { font-size: 1.1rem; }
+                .dir-label { display: none; }
+                .container { max-width: 100%; }
+                textarea { min-height: 80px; padding: 0.75rem; font-size: 0.95rem; }
+                .pane-container {
+                  flex-direction: column;
+                  max-width: 100%;
+                  margin-top: 0.75rem;
+                  gap: 0.75rem;
+                }
+                .left-pane {
+                  width: 100%;
+                  flex-shrink: 1;
+                  overflow-y: visible;
+                }
+                .right-pane { width: 100%; }
+                .direction-item { padding: 0.75rem 0.75rem; min-height: 44px; }
+                .direction-summary { max-width: 35%; font-size: 0.75rem; }
+                .direction-detail-body { padding: 0.75rem; }
+                .submission-item { padding: 0.5rem; }
               }
             </style>
           </head>
