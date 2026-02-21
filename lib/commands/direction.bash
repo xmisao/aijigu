@@ -167,6 +167,8 @@ command_direction_run() {
   local last_message_dir="$AIJIGU_DIRECTION_DIR/.last_messages"
   mkdir -p "$last_message_dir"
   local -a attempt_summaries=()
+  local total_cost_usd="0"
+  local total_duration_ms="0"
 
   while true; do
     attempt=$((attempt + 1))
@@ -207,6 +209,14 @@ ${retry_prompt}"
     if [[ -n "$result_text" && $attempt -eq 1 ]]; then
       printf '%s\n' "$result_text" > "$last_message_dir/${id}.txt"
     fi
+
+    # Accumulate cost and duration across attempts
+    local attempt_cost attempt_duration
+    attempt_cost="$(jq -r 'select(.type == "result") | .total_cost_usd // 0' "$tmp_stream" 2>/dev/null | tail -1 || echo 0)"
+    attempt_duration="$(jq -r 'select(.type == "result") | .duration_ms // 0' "$tmp_stream" 2>/dev/null | tail -1 || echo 0)"
+    total_cost_usd="$(awk -v a="$total_cost_usd" -v b="$attempt_cost" 'BEGIN{printf "%.6f", a+b}')"
+    total_duration_ms="$(awk -v a="$total_duration_ms" -v b="$attempt_duration" 'BEGIN{printf "%d", a+b}')"
+
     rm -f "$tmp_stream"
 
     # --- Step 2: Judge completion ---
@@ -270,6 +280,23 @@ ${retry_prompt}"
       slack_msg="[aijigu] Direction #${id} (${direction_name}) finished (exit code: ${run_exit})"
     else
       slack_msg="[aijigu] Direction #${id} (${direction_name}) completed"
+    fi
+
+    # Append cost and duration stats
+    local stats_line
+    stats_line="$(awk -v d="$total_duration_ms" -v c="$total_cost_usd" 'BEGIN{
+      parts = ""
+      if (d+0 > 0) parts = sprintf("%.1fs", d/1000)
+      if (c+0 > 0) {
+        cost = sprintf("$%.4f", c)
+        if (parts != "") parts = parts " | " cost
+        else parts = cost
+      }
+      print parts
+    }')"
+    if [[ -n "$stats_line" ]]; then
+      slack_msg="${slack_msg}
+${stats_line}"
     fi
 
     if [[ -n "$last_msg" ]]; then
