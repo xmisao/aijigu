@@ -5,7 +5,7 @@ command_web() {
     echo "Usage: aijigu web <subcommand>" >&2
     echo "" >&2
     echo "Subcommands:" >&2
-    echo "  start   Start the web server" >&2
+    echo "  start [-p PORT] [-b HOST]   Start the web server" >&2
     exit 1
   fi
 

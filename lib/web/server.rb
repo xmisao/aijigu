@@ -582,5 +582,14 @@ module Aijigu
 end
 
 if __FILE__ == $PROGRAM_NAME
-  Aijigu::Web::Server.new.start
+  require "optparse"
+
+  options = {}
+  OptionParser.new do |opts|
+    opts.banner = "Usage: aijigu web start [options]"
+    opts.on("-p", "--port PORT", Integer, "Port number (default: #{Aijigu::Web::Server::DEFAULT_PORT})") { |v| options[:port] = v }
+    opts.on("-b", "--bind HOST", "Bind address (default: #{Aijigu::Web::Server::DEFAULT_HOST})") { |v| options[:host] = v }
+  end.parse!
+
+  Aijigu::Web::Server.new(**options).start
 end
