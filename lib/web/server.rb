@@ -261,7 +261,7 @@ module Aijigu
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>aijigu</title>
+            <title>AI Jig Utility</title>
             <style>
               *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
               body {
@@ -518,7 +518,7 @@ module Aijigu
           </head>
           <body>
             <div class="container">
-              <h1>aijigu</h1>
+              <h1>AI Jig Utility</h1>
               <textarea id="instruction" placeholder="Enter instruction..." autofocus></textarea>
               <div class="actions">
                 <button id="submit" type="button">Submit</button>
