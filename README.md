@@ -7,12 +7,15 @@ Automation framework powered by Claude CLI.
 - Bash
 - [Claude CLI](https://docs.anthropic.com/en/docs/claude-code)
 - `jq`
+- Ruby (for `aijigu web`)
 
 ## Setup
 
 Set `AIJIGU_DIRECTION_DIR` to the path where direction files are stored.
 
 Set `AIJIGU_SLACK_INCOMMING_WEBHOOK_URL` to enable Slack notifications (optional).
+
+Set `AIJIGU_WEB_USERNAME` and `AIJIGU_WEB_PASSWORD` to enable web authentication (optional).
 
 ## Commands
 
@@ -23,12 +26,20 @@ Set `AIJIGU_SLACK_INCOMMING_WEBHOOK_URL` to enable Slack notifications (optional
 Manage and execute direction files — task definitions that Claude works through autonomously.
 
 - `aijigu direction add [-f <file> | -m <text>]` - Create a new direction from a file or text.
+- `aijigu direction list [--completed]` - List pending or completed directions.
+- `aijigu direction show <id>` - Display a direction's content.
 - `aijigu direction run <id>` - Execute a direction by ID.
 - `aijigu direction auto` - Continuously execute directions in sequence.
 
-### Internal commands
+### `aijigu web`
 
-Internal commands are prefixed with `_` and are not intended for direct use.
+Web UI for browsing and submitting directions.
+
+- `aijigu web start [-p PORT] [-b HOST]` - Start the web server (default: `127.0.0.1:8080`).
+
+### Internal commands (internal API)
+
+Internal commands are prefixed with `_` and are not intended for direct use. These are internal APIs used by other commands.
 
 - `aijigu _notify slack <message>` - Send a message to Slack via incoming webhook.
 - `aijigu _utils pretty_claude_stream_json` - Format Claude's stream-json output.
