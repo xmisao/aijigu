@@ -272,7 +272,7 @@ module Aijigu
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                padding: 2rem 1rem;
+                padding: 1rem 1rem 0;
               }
               h1 {
                 font-size: 1.25rem;
@@ -283,10 +283,11 @@ module Aijigu
               .container {
                 width: 100%;
                 max-width: 720px;
+                flex-shrink: 0;
               }
               textarea {
                 width: 100%;
-                min-height: 60vh;
+                min-height: 120px;
                 padding: 1rem;
                 font-family: inherit;
                 font-size: 1rem;
@@ -331,7 +332,6 @@ module Aijigu
               .notice.success { display: block; background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
               .notice.error { display: block; background: #fbe9e7; color: #c62828; border: 1px solid #ef9a9a; }
               .directions {
-                margin-top: 2rem;
                 width: 100%;
               }
               .directions h2 {
@@ -393,12 +393,16 @@ module Aijigu
               }
               .direction-item { cursor: pointer; }
               .direction-item:hover { background: #f0f0f0; }
+              .direction-item.selected { background: #e3f2fd; }
+              .direction-item.selected:hover { background: #d0e8fc; }
               .direction-detail {
-                margin-top: 1rem;
+                flex: 1;
                 border: 1px solid #ccc;
                 border-radius: 6px;
                 background: #fff;
                 overflow: hidden;
+                display: flex;
+                flex-direction: column;
               }
               .direction-detail-header {
                 display: flex;
@@ -430,6 +434,8 @@ module Aijigu
                 white-space: pre-wrap;
                 word-wrap: break-word;
                 color: #333;
+                flex: 1;
+                overflow-y: auto;
               }
               .submissions {
                 margin-top: 0.75rem;
@@ -514,6 +520,41 @@ module Aijigu
                 vertical-align: middle;
                 margin-right: 0.3rem;
               }
+              .pane-container {
+                display: flex;
+                width: 100%;
+                max-width: 1200px;
+                flex: 1;
+                min-height: 0;
+                margin-top: 1rem;
+                gap: 1rem;
+                padding-bottom: 1rem;
+              }
+              .left-pane {
+                width: 340px;
+                flex-shrink: 0;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+              }
+              .right-pane {
+                flex: 1;
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+              }
+              .right-pane-placeholder {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #aaa;
+                font-size: 0.9rem;
+                border: 1px dashed #ddd;
+                border-radius: 6px;
+                background: #fafafa;
+              }
             </style>
           </head>
           <body>
@@ -525,20 +566,27 @@ module Aijigu
               </div>
               <div id="notice" class="notice"></div>
               <div id="submissions" class="submissions" style="display:none;"></div>
-              <div class="directions">
-                <h2 id="pending-toggle" class="expanded">Pending</h2>
-                <ul id="pending-list" class="direction-list"></ul>
-              </div>
-              <div class="directions">
-                <h2 id="completed-toggle">Completed</h2>
-                <ul id="completed-list" class="direction-list" style="display:none;"></ul>
-              </div>
-              <div id="direction-detail" class="direction-detail" style="display:none;">
-                <div class="direction-detail-header">
-                  <span id="direction-detail-title"></span>
-                  <button class="direction-detail-close" id="direction-detail-close" type="button">&times;</button>
+            </div>
+            <div class="pane-container">
+              <div class="left-pane">
+                <div class="directions">
+                  <h2 id="pending-toggle" class="expanded">Pending</h2>
+                  <ul id="pending-list" class="direction-list"></ul>
                 </div>
-                <div class="direction-detail-body" id="direction-detail-body"></div>
+                <div class="directions">
+                  <h2 id="completed-toggle">Completed</h2>
+                  <ul id="completed-list" class="direction-list" style="display:none;"></ul>
+                </div>
+              </div>
+              <div class="right-pane">
+                <div id="direction-detail" class="direction-detail" style="display:none;">
+                  <div class="direction-detail-header">
+                    <span id="direction-detail-title"></span>
+                    <button class="direction-detail-close" id="direction-detail-close" type="button">&times;</button>
+                  </div>
+                  <div class="direction-detail-body" id="direction-detail-body"></div>
+                </div>
+                <div id="right-pane-placeholder" class="right-pane-placeholder">Select a direction to view details</div>
               </div>
             </div>
             <script>
@@ -549,6 +597,7 @@ module Aijigu
               let lastSavedDraft = '';
               let submissions = [];
               let pollingInterval = null;
+              let selectedDirectionId = null;
 
               function showNotice(msg, type) {
                 notice.textContent = msg;
@@ -730,6 +779,7 @@ module Aijigu
                     '<span class="direction-id">#' + d.id + '</span>' +
                     '<span class="direction-title">' + escapeHtml(d.title) + '</span>' +
                     '<span class="direction-summary">' + escapeHtml(d.summary) + '</span>';
+                  if (d.id === selectedDirectionId) li.classList.add('selected');
                   li.addEventListener('click', function() { showDirection(d.id); });
                   list.appendChild(li);
                 });
@@ -755,6 +805,13 @@ module Aijigu
               const detailClose = document.getElementById('direction-detail-close');
 
               async function showDirection(id) {
+                selectedDirectionId = id;
+                document.querySelectorAll('.direction-item').forEach(function(el) { el.classList.remove('selected'); });
+                document.querySelectorAll('.direction-item').forEach(function(el) {
+                  if (el.querySelector('.direction-id') && el.querySelector('.direction-id').textContent === '#' + id) {
+                    el.classList.add('selected');
+                  }
+                });
                 try {
                   const res = await fetch('/api/direction/show?id=' + id);
                   const data = await res.json();
@@ -762,6 +819,7 @@ module Aijigu
                     detailTitle.textContent = '#' + data.id + ' ' + data.title;
                     detailBody.textContent = data.content;
                     detailPanel.style.display = '';
+                    document.getElementById('right-pane-placeholder').style.display = 'none';
                   } else {
                     showNotice(data.error || 'An error occurred', 'error');
                   }
@@ -772,6 +830,9 @@ module Aijigu
 
               detailClose.addEventListener('click', function() {
                 detailPanel.style.display = 'none';
+                document.getElementById('right-pane-placeholder').style.display = '';
+                selectedDirectionId = null;
+                document.querySelectorAll('.direction-item').forEach(function(el) { el.classList.remove('selected'); });
               });
 
               async function loadDirections() {
