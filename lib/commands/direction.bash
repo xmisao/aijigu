@@ -167,7 +167,7 @@ command_direction_run() {
 
   # Slack notification: started
   if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
-    "$aijigu" _notify slack "[aijigu] Direction #${id} (${direction_name}) started" 2>/dev/null || true
+    "$aijigu" _notify slack "🚀 [aijigu] Direction #${id} (${direction_name}) started" 2>/dev/null || true
   fi
 
   local max_retries="${AIJIGU_DIRECTION_INTERNAL_RETRY:-}"
@@ -316,18 +316,18 @@ ${retry_prompt}"
 
     local slack_msg
     if [[ $run_exit -ne 0 ]]; then
-      slack_msg="[aijigu] Direction #${id} (${direction_name}) finished (exit code: ${run_exit})"
+      slack_msg="⚠️ [aijigu] Direction #${id} (${direction_name}) finished (exit code: ${run_exit})"
     else
-      slack_msg="[aijigu] Direction #${id} (${direction_name}) completed"
+      slack_msg="✅ [aijigu] Direction #${id} (${direction_name}) completed"
     fi
 
     # Append cost and duration stats
     local stats_line
     stats_line="$(awk -v d="$total_duration_ms" -v c="$total_cost_usd" 'BEGIN{
       parts = ""
-      if (d+0 > 0) parts = sprintf("%.1fs", d/1000)
+      if (d+0 > 0) parts = sprintf("⏱️ %.1fs", d/1000)
       if (c+0 > 0) {
-        cost = sprintf("$%.4f", c)
+        cost = sprintf("💰 $%.4f", c)
         if (parts != "") parts = parts " | " cost
         else parts = cost
       }
@@ -340,7 +340,7 @@ ${stats_line}"
 
     if [[ -n "$last_msg" ]]; then
       slack_msg="${slack_msg}
-${last_msg}"
+📝 ${last_msg}"
     fi
 
     "$aijigu" _notify slack "$slack_msg" 2>/dev/null || true
