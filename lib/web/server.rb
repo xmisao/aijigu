@@ -295,6 +295,16 @@ module Aijigu
                 cursor: pointer;
                 user-select: none;
               }
+              .directions h2::before {
+                content: '\u25b6';
+                display: inline-block;
+                margin-right: 0.4rem;
+                font-size: 0.7rem;
+                transition: transform 0.15s;
+              }
+              .directions h2.expanded::before {
+                transform: rotate(90deg);
+              }
               .directions h2:hover { color: #333; }
               .direction-list {
                 list-style: none;
@@ -385,7 +395,7 @@ module Aijigu
               </div>
               <div id="notice" class="notice"></div>
               <div class="directions">
-                <h2 id="pending-toggle">Pending</h2>
+                <h2 id="pending-toggle" class="expanded">Pending</h2>
                 <ul id="pending-list" class="direction-list"></ul>
               </div>
               <div class="directions">
@@ -484,12 +494,13 @@ module Aijigu
                 return d.innerHTML;
               }
 
-              function toggleList(el) {
+              function toggleList(heading, el) {
                 el.style.display = el.style.display === 'none' ? '' : 'none';
+                heading.classList.toggle('expanded');
               }
 
-              pendingToggle.addEventListener('click', function() { toggleList(pendingList); });
-              completedToggle.addEventListener('click', function() { toggleList(completedList); });
+              pendingToggle.addEventListener('click', function() { toggleList(pendingToggle, pendingList); });
+              completedToggle.addEventListener('click', function() { toggleList(completedToggle, completedList); });
 
               const detailPanel = document.getElementById('direction-detail');
               const detailTitle = document.getElementById('direction-detail-title');
