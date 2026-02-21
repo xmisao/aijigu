@@ -10,7 +10,7 @@ command_direction() {
   shift
 
   case "$subcommand" in
-    init)
+    _init)
       command_direction_init "$@"
       ;;
     add)
@@ -19,16 +19,16 @@ command_direction() {
     run)
       command_direction_run "$@"
       ;;
-    next)
+    _next)
       command_direction_next "$@"
       ;;
     auto)
       command_direction_auto "$@"
       ;;
-    continue)
+    _continue)
       command_direction_continue "$@"
       ;;
-    last_message)
+    _last_message)
       command_direction_last_message "$@"
       ;;
     *)
@@ -152,7 +152,7 @@ command_direction_run() {
 
   # Slack notification: started
   if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
-    "$aijigu" notify slack "[aijigu] Direction #${id} (${direction_name}) started" 2>/dev/null || true
+    "$aijigu" _notify slack "[aijigu] Direction #${id} (${direction_name}) started" 2>/dev/null || true
   fi
 
   local max_retries="${AIJIGU_DIRECTION_INTERNAL_RETRY:-}"
@@ -271,7 +271,7 @@ ${last_msg}
 \`\`\`"
     fi
 
-    "$aijigu" notify slack "$slack_msg" 2>/dev/null || true
+    "$aijigu" _notify slack "$slack_msg" 2>/dev/null || true
   fi
 
   exit "$run_exit"
@@ -354,7 +354,7 @@ command_direction_auto() {
   while true; do
     echo "--- Checking for next direction..."
     local next_id
-    next_id="$("$aijigu" direction next)" || true
+    next_id="$("$aijigu" direction _next)" || true
 
     if [[ -z "$next_id" ]]; then
       echo "--- No pending directions. Polling ${AIJIGU_DIRECTION_DIR} for new files (Ctrl+C to quit)..."
@@ -377,7 +377,7 @@ command_direction_auto() {
     echo "--- Starting direction #${next_id}"
 
     set +e
-    "$aijigu" direction run "$next_id" | "$aijigu" utils pretty_claude_stream_json
+    "$aijigu" direction run "$next_id" | "$aijigu" _utils pretty_claude_stream_json
     local run_exit=${PIPESTATUS[0]}
     set -e
 
@@ -410,7 +410,7 @@ command_direction_auto() {
 
     echo "--- Checking whether to continue..."
     set +e
-    "$aijigu" direction continue "$result_json"
+    "$aijigu" direction _continue "$result_json"
     local continue_exit=$?
     set -e
 
@@ -429,7 +429,7 @@ command_direction_auto() {
 
 command_direction_continue() {
   if [[ $# -eq 0 ]]; then
-    echo "Usage: aijigu direction continue <json>" >&2
+    echo "Usage: aijigu direction _continue <json>" >&2
     exit 1
   fi
 

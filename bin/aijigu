@@ -35,11 +35,11 @@ case "$COMMAND" in
     source "$AIJIGU_ROOT/lib/commands/direction.bash"
     command_direction "$@"
     ;;
-  notify)
+  _notify)
     source "$AIJIGU_ROOT/lib/commands/notify.bash"
     command_notify "$@"
     ;;
-  utils)
+  _utils)
     source "$AIJIGU_ROOT/lib/commands/utils.bash"
     command_utils "$@"
     ;;

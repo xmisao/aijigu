@@ -17,19 +17,25 @@ Set `AIJIGU_SLACK_INCOMMING_WEBHOOK_URL` to enable Slack notifications (optional
 ## Commands
 
 - `aijigu run <prompt>` - Run a prompt via `claude -p`.
-- `aijigu notify slack <message>` - Send a message to Slack via incoming webhook.
-- `aijigu utils pretty_claude_stream_json` - Format Claude's stream-json output.
 
 ### `aijigu direction`
 
 Manage and execute direction files — task definitions that Claude works through autonomously.
 
-- `aijigu direction init` - Initialize the direction directory.
 - `aijigu direction add [-f <file> | -m <text>]` - Create a new direction from a file or text.
-- `aijigu direction next` - Show the ID of the next direction to work on.
 - `aijigu direction run <id>` - Execute a direction by ID.
 - `aijigu direction auto` - Continuously execute directions in sequence.
-- `aijigu direction continue <json>` - Decide whether to continue the auto loop.
+
+### Internal commands
+
+Internal commands are prefixed with `_` and are not intended for direct use.
+
+- `aijigu _notify slack <message>` - Send a message to Slack via incoming webhook.
+- `aijigu _utils pretty_claude_stream_json` - Format Claude's stream-json output.
+- `aijigu direction _init` - Initialize the direction directory.
+- `aijigu direction _next` - Show the ID of the next direction to work on.
+- `aijigu direction _continue <json>` - Decide whether to continue the auto loop.
+- `aijigu direction _last_message [id]` - Show the last message from a direction execution.
 
 ## Caution
 

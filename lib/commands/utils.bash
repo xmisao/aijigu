@@ -2,7 +2,7 @@
 
 command_utils() {
   if [[ $# -eq 0 ]]; then
-    echo "Usage: aijigu utils <subcommand>" >&2
+    echo "Usage: aijigu _utils <subcommand>" >&2
     exit 1
   fi
 
@@ -14,7 +14,7 @@ command_utils() {
       command_utils_pretty_claude_stream_json "$@"
       ;;
     *)
-      echo "aijigu utils: unknown subcommand '${subcommand}'" >&2
+      echo "aijigu _utils: unknown subcommand '${subcommand}'" >&2
       exit 1
       ;;
   esac

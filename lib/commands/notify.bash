@@ -2,7 +2,7 @@
 
 command_notify() {
   if [[ $# -eq 0 ]]; then
-    echo "Usage: aijigu notify <subcommand>" >&2
+    echo "Usage: aijigu _notify <subcommand>" >&2
     echo "" >&2
     echo "Subcommands:" >&2
     echo "  slack <message>   Send a message to Slack via incoming webhook" >&2
@@ -17,7 +17,7 @@ command_notify() {
       command_notify_slack "$@"
       ;;
     *)
-      echo "aijigu notify: unknown subcommand '${subcommand}'" >&2
+      echo "aijigu _notify: unknown subcommand '${subcommand}'" >&2
       exit 1
       ;;
   esac
@@ -25,7 +25,7 @@ command_notify() {
 
 command_notify_slack() {
   if [[ $# -lt 1 ]]; then
-    echo "Usage: aijigu notify slack <message>" >&2
+    echo "Usage: aijigu _notify slack <message>" >&2
     exit 1
   fi
 
