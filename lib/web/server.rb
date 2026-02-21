@@ -17,6 +17,7 @@ module Aijigu
         @host = host || ENV.fetch("AIJIGU_WEB_HOST", DEFAULT_HOST)
         @port = (port || ENV.fetch("AIJIGU_WEB_PORT", DEFAULT_PORT)).to_i
         @aijigu_bin = File.expand_path("../../bin/aijigu", __dir__)
+        @draft = ""
       end
 
       def start
@@ -58,6 +59,12 @@ module Aijigu
           handle_direction_show(client, path)
         elsif method == "POST" && path == "/api/direction/add"
           handle_direction_add(client, headers)
+        elsif method == "GET" && path == "/api/direction/draft"
+          handle_draft_get(client)
+        elsif method == "PUT" && path == "/api/direction/draft"
+          handle_draft_put(client, headers)
+        elsif method == "DELETE" && path == "/api/direction/draft"
+          handle_draft_delete(client)
         else
           serve_not_found(client)
         end
@@ -165,6 +172,30 @@ module Aijigu
         Process.detach(pid)
 
         write_json_response(client, 202, { status: "accepted", message: "Direction add started" })
+      end
+
+      def handle_draft_get(client)
+        write_json_response(client, 200, { draft: @draft })
+      end
+
+      def handle_draft_put(client, headers)
+        content_length = headers["content-length"]&.to_i || 0
+        body = content_length > 0 ? client.read(content_length) : ""
+
+        begin
+          data = JSON.parse(body)
+        rescue JSON::ParserError
+          write_json_response(client, 400, { error: "Invalid JSON" })
+          return
+        end
+
+        @draft = data["draft"] || ""
+        write_json_response(client, 200, { status: "saved" })
+      end
+
+      def handle_draft_delete(client)
+        @draft = ""
+        write_json_response(client, 200, { status: "cleared" })
       end
 
       def serve_root(client)
@@ -369,6 +400,7 @@ module Aijigu
               const textarea = document.getElementById('instruction');
               const submitBtn = document.getElementById('submit');
               const notice = document.getElementById('notice');
+              let lastSavedDraft = '';
 
               function showNotice(msg, type) {
                 notice.textContent = msg;
@@ -399,6 +431,8 @@ module Aijigu
                   if (res.ok) {
                     showNotice('タスク化を受け付けました', 'success');
                     textarea.value = '';
+                    lastSavedDraft = '';
+                    fetch('/api/direction/draft', { method: 'DELETE' });
                   } else {
                     showNotice(data.error || 'エラーが発生しました', 'error');
                   }
@@ -487,6 +521,37 @@ module Aijigu
                 }
               }
 
+              async function loadDraft() {
+                try {
+                  const res = await fetch('/api/direction/draft');
+                  const data = await res.json();
+                  if (res.ok && data.draft) {
+                    textarea.value = data.draft;
+                    lastSavedDraft = data.draft;
+                  }
+                } catch (e) {
+                  // Silently ignore
+                }
+              }
+
+              async function saveDraft() {
+                const current = textarea.value;
+                if (current === lastSavedDraft) return;
+                lastSavedDraft = current;
+                try {
+                  await fetch('/api/direction/draft', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ draft: current })
+                  });
+                } catch (e) {
+                  // Silently ignore
+                }
+              }
+
+              setInterval(saveDraft, 3000);
+
+              loadDraft();
               loadDirections();
             </script>
           </body>
