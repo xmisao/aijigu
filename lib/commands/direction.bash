@@ -156,6 +156,15 @@ command_direction_run() {
 
   local aijigu="$AIJIGU_ROOT/bin/aijigu"
 
+  # Mark direction as active (for web UI progress tracking)
+  local active_dir="$AIJIGU_DIRECTION_DIR/.active"
+  mkdir -p "$active_dir"
+  local active_file="$active_dir/${id}.json"
+  printf '{"id":%s,"name":"%s","started_at":"%s","pid":%s}\n' \
+    "$id" "$direction_name" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$" > "$active_file"
+  # Ensure active file is removed on exit (normal, error, or signal)
+  trap "rm -f '$active_file'" EXIT INT TERM HUP
+
   # Slack notification: started
   if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
     "$aijigu" _notify slack "[aijigu] Direction #${id} (${direction_name}) started" 2>/dev/null || true
@@ -336,6 +345,10 @@ ${last_msg}"
 
     "$aijigu" _notify slack "$slack_msg" 2>/dev/null || true
   fi
+
+  # Remove active state file (also handled by trap, but be explicit)
+  rm -f "$active_file"
+  trap - EXIT INT TERM HUP
 
   exit "$run_exit"
 }

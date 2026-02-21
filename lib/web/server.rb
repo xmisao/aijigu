@@ -69,6 +69,8 @@ module Aijigu
           handle_direction_add(client, headers)
         elsif method == "GET" && path&.start_with?("/api/submission/status")
           handle_submission_status(client, path)
+        elsif method == "GET" && path == "/api/direction/active"
+          handle_direction_active(client)
         elsif method == "GET" && path == "/api/direction/draft"
           handle_draft_get(client)
         elsif method == "PUT" && path == "/api/direction/draft"
@@ -90,6 +92,37 @@ module Aijigu
         completed = list_directions(completed_dir, completed: true)
 
         write_json_response(client, 200, { pending: pending, completed: completed })
+      end
+
+      def handle_direction_active(client)
+        active_dir = File.join(direction_dir, ".active")
+        active = []
+
+        if File.directory?(active_dir)
+          Dir.glob(File.join(active_dir, "*.json")).each do |path|
+            begin
+              data = JSON.parse(File.read(path))
+              pid = data["pid"]
+              # Clean up stale entries where the process no longer exists
+              if pid && !process_alive?(pid)
+                File.delete(path) rescue nil
+                next
+              end
+              active << data
+            rescue JSON::ParserError, Errno::ENOENT
+              next
+            end
+          end
+        end
+
+        write_json_response(client, 200, { active: active })
+      end
+
+      def process_alive?(pid)
+        Process.kill(0, pid.to_i)
+        true
+      rescue Errno::ESRCH, Errno::EPERM
+        false
       end
 
       def handle_direction_show(client, path)
@@ -393,8 +426,30 @@ module Aijigu
               }
               .direction-item { cursor: pointer; }
               .direction-item:hover { background: #f0f0f0; }
+              .direction-item.active {
+                background: #fff8e1;
+                border-left: 3px solid #f9a825;
+              }
+              .direction-item.active:hover { background: #fff3c4; }
+              .direction-item.active .direction-title { font-weight: 600; }
+              .direction-item.active .direction-id::after {
+                content: '';
+                display: inline-block;
+                width: 0.5rem;
+                height: 0.5rem;
+                background: #f9a825;
+                border-radius: 50%;
+                margin-left: 0.3rem;
+                animation: pulse 1.5s ease-in-out infinite;
+                vertical-align: middle;
+              }
+              @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.3; }
+              }
               .direction-item.selected { background: #e3f2fd; }
               .direction-item.selected:hover { background: #d0e8fc; }
+              .direction-item.active.selected { background: #fff3c4; border-left: 3px solid #f9a825; }
               .direction-detail {
                 flex: 1;
                 border: 1px solid #ccc;
@@ -598,6 +653,7 @@ module Aijigu
               let submissions = [];
               let pollingInterval = null;
               let selectedDirectionId = null;
+              let activeDirectionIds = new Set();
 
               function showNotice(msg, type) {
                 notice.textContent = msg;
@@ -775,6 +831,7 @@ module Aijigu
                 directions.forEach(function(d) {
                   const li = document.createElement('li');
                   li.className = 'direction-item';
+                  if (activeDirectionIds.has(d.id)) li.classList.add('active');
                   li.innerHTML =
                     '<span class="direction-id">#' + d.id + '</span>' +
                     '<span class="direction-title">' + escapeHtml(d.title) + '</span>' +
@@ -846,6 +903,26 @@ module Aijigu
                 }
               }
 
+              async function loadActiveDirections() {
+                try {
+                  const res = await fetch('/api/direction/active');
+                  const data = await res.json();
+                  const newActive = new Set((data.active || []).map(function(a) { return a.id; }));
+                  if (setsEqual(activeDirectionIds, newActive)) return;
+                  activeDirectionIds = newActive;
+                  // Re-render direction lists to update highlighting
+                  loadDirections();
+                } catch (e) {
+                  // Silently ignore
+                }
+              }
+
+              function setsEqual(a, b) {
+                if (a.size !== b.size) return false;
+                for (const v of a) { if (!b.has(v)) return false; }
+                return true;
+              }
+
               async function loadDraft() {
                 try {
                   const res = await fetch('/api/direction/draft');
@@ -878,7 +955,9 @@ module Aijigu
 
               loadDraft();
               loadDirections();
+              loadActiveDirections();
               setInterval(loadDirections, 10000);
+              setInterval(loadActiveDirections, 3000);
             </script>
           </body>
           </html>
