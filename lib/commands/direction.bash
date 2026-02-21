@@ -31,6 +31,9 @@ command_direction() {
     _last_message)
       command_direction_last_message "$@"
       ;;
+    list)
+      command_direction_list "$@"
+      ;;
     *)
       echo "aijigu direction: unknown subcommand '${subcommand}'" >&2
       exit 1
@@ -340,6 +343,41 @@ command_direction_last_message() {
     fi
     cat "$msg_file"
   fi
+}
+
+command_direction_list() {
+  if [[ -z "${AIJIGU_DIRECTION_DIR:-}" ]]; then
+    echo "Error: AIJIGU_DIRECTION_DIR is not set." >&2
+    exit 1
+  fi
+
+  local show_completed=false
+  OPTIND=1
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --completed)
+        show_completed=true
+        shift
+        ;;
+      *)
+        echo "Usage: aijigu direction list [--completed]" >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  local search_dir
+  if [[ "$show_completed" == "true" ]]; then
+    search_dir="$AIJIGU_DIRECTION_DIR/completed"
+  else
+    search_dir="$AIJIGU_DIRECTION_DIR"
+  fi
+
+  if [[ ! -d "$search_dir" ]]; then
+    exit 0
+  fi
+
+  ls "$search_dir"/[0-9]*-*.md 2>/dev/null || true
 }
 
 command_direction_auto() {
