@@ -34,6 +34,9 @@ command_direction() {
     list)
       command_direction_list "$@"
       ;;
+    show)
+      command_direction_show "$@"
+      ;;
     *)
       echo "aijigu direction: unknown subcommand '${subcommand}'" >&2
       exit 1
@@ -378,6 +381,34 @@ command_direction_list() {
   fi
 
   ls "$search_dir"/[0-9]*-*.md 2>/dev/null || true
+}
+
+command_direction_show() {
+  if [[ -z "${AIJIGU_DIRECTION_DIR:-}" ]]; then
+    echo "Error: AIJIGU_DIRECTION_DIR is not set." >&2
+    exit 1
+  fi
+
+  if [[ $# -eq 0 ]]; then
+    echo "Usage: aijigu direction show <id>" >&2
+    exit 1
+  fi
+
+  local id="$1"
+
+  # Search in pending directory first, then completed directory
+  local match
+  match="$(ls "$AIJIGU_DIRECTION_DIR"/${id}-*.md 2>/dev/null | head -1 || true)"
+  if [[ -z "$match" ]]; then
+    match="$(ls "$AIJIGU_DIRECTION_DIR/completed"/${id}-*.md 2>/dev/null | head -1 || true)"
+  fi
+
+  if [[ -z "$match" ]]; then
+    echo "Error: No direction found with ID: $id" >&2
+    exit 1
+  fi
+
+  cat "$match"
 }
 
 command_direction_auto() {
