@@ -6,6 +6,7 @@
 
 require "socket"
 require "json"
+require "open3"
 
 module Aijigu
   module Web
@@ -166,12 +167,15 @@ module Aijigu
           return
         end
 
-        # Run direction add in a background process
-        pid = spawn(@aijigu_bin, "direction", "add", "-m", instruction,
-                    out: "/dev/null", err: "/dev/null")
-        Process.detach(pid)
+        # Run direction add synchronously to capture the created filename
+        output, status = Open3.capture2(@aijigu_bin, "direction", "add", "-m", instruction)
 
-        write_json_response(client, 202, { status: "accepted", message: "Direction add started" })
+        if status.success?
+          filename = output.strip
+          write_json_response(client, 201, { status: "created", filename: filename })
+        else
+          write_json_response(client, 500, { error: "Failed to create direction" })
+        end
       end
 
       def handle_draft_get(client)
@@ -429,10 +433,12 @@ module Aijigu
                   const data = await res.json();
 
                   if (res.ok) {
-                    showNotice('タスク化を受け付けました', 'success');
+                    const name = data.filename || '';
+                    showNotice('タスク化しました: ' + name, 'success');
                     textarea.value = '';
                     lastSavedDraft = '';
                     fetch('/api/direction/draft', { method: 'DELETE' });
+                    loadDirections();
                   } else {
                     showNotice(data.error || 'エラーが発生しました', 'error');
                   }
@@ -553,6 +559,7 @@ module Aijigu
 
               loadDraft();
               loadDirections();
+              setInterval(loadDirections, 10000);
             </script>
           </body>
           </html>
@@ -564,7 +571,7 @@ module Aijigu
       end
 
       def write_json_response(client, status, data)
-        reason = { 200 => "OK", 202 => "Accepted", 400 => "Bad Request", 404 => "Not Found", 500 => "Internal Server Error" }[status] || "OK"
+        reason = { 200 => "OK", 201 => "Created", 202 => "Accepted", 400 => "Bad Request", 404 => "Not Found", 500 => "Internal Server Error" }[status] || "OK"
         body = JSON.generate(data)
         write_response(client, status, reason, body, content_type: "application/json; charset=utf-8")
       end
