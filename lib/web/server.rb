@@ -74,6 +74,11 @@ module Aijigu
             return
           end
 
+          if method == "POST" && path == "/auth/logout"
+            handle_logout(client, headers)
+            return
+          end
+
           cookies = parse_cookies(headers)
           unless valid_session?(cookies[SESSION_COOKIE_NAME])
             if method == "GET" && path == "/"
@@ -396,6 +401,16 @@ module Aijigu
         end
       end
 
+      def handle_logout(client, headers)
+        cookies = parse_cookies(headers)
+        session_id = cookies[SESSION_COOKIE_NAME]
+        if session_id
+          @sessions_mutex.synchronize { @sessions.delete(session_id) }
+        end
+        cookie = "#{SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+        write_redirect(client, "/", set_cookie: cookie)
+      end
+
       def serve_login_page(client, error: false)
         body = login_html(error: error)
         write_response(client, 200, "OK", body)
@@ -505,11 +520,11 @@ module Aijigu
       end
 
       def serve_root(client)
-        body = root_html
+        body = root_html(show_logout: auth_required?)
         write_response(client, 200, "OK", body)
       end
 
-      def root_html
+      def root_html(show_logout: false)
         <<~HTML
           <!DOCTYPE html>
           <html lang="en">
@@ -535,6 +550,25 @@ module Aijigu
                 margin-bottom: 1rem;
                 color: #555;
               }
+              .header-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 1rem;
+              }
+              .header-row h1 { margin-bottom: 0; }
+              .logout-btn {
+                padding: 0.3rem 0.8rem;
+                font-family: inherit;
+                font-size: 0.85rem;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                background: #fff;
+                color: #888;
+                cursor: pointer;
+                transition: background 0.15s, border-color 0.15s, color 0.15s;
+              }
+              .logout-btn:hover { background: #eee; border-color: #888; color: #333; }
               .container {
                 width: 100%;
                 max-width: 720px;
@@ -836,7 +870,10 @@ module Aijigu
           </head>
           <body>
             <div class="container">
-              <h1>AI Jig Utility</h1>
+              <div class="header-row">
+                <h1>AI Jig Utility</h1>
+                #{show_logout ? '<form method="POST" action="/auth/logout" style="margin:0;"><button type="submit" class="logout-btn">Logout</button></form>' : ''}
+              </div>
               <textarea id="instruction" placeholder="Enter instruction..." autofocus></textarea>
               <div class="actions">
                 <button id="submit" type="button">Submit</button>
