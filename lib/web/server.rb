@@ -826,12 +826,12 @@ module Aijigu
               const pendingToggle = document.getElementById('pending-toggle');
               const completedToggle = document.getElementById('completed-toggle');
 
-              function renderDirections(list, directions) {
+              function renderDirections(list, directions, showActive) {
                 list.innerHTML = '';
                 directions.forEach(function(d) {
                   const li = document.createElement('li');
                   li.className = 'direction-item';
-                  if (activeDirectionIds.has(d.id)) li.classList.add('active');
+                  if (showActive && activeDirectionIds.has(d.id)) li.classList.add('active');
                   li.innerHTML =
                     '<span class="direction-id">#' + d.id + '</span>' +
                     '<span class="direction-title">' + escapeHtml(d.title) + '</span>' +
@@ -896,8 +896,8 @@ module Aijigu
                 try {
                   const res = await fetch('/api/direction/list');
                   const data = await res.json();
-                  renderDirections(pendingList, data.pending || []);
-                  renderDirections(completedList, data.completed || []);
+                  renderDirections(pendingList, data.pending || [], true);
+                  renderDirections(completedList, data.completed || [], false);
                 } catch (e) {
                   // Silently ignore load errors
                 }
