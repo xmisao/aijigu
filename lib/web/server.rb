@@ -5,6 +5,7 @@
 # Uses WEBrick which ships with Ruby and requires no external dependencies.
 
 require "socket"
+require "json"
 
 module Aijigu
   module Web
@@ -15,6 +16,7 @@ module Aijigu
       def initialize(host: nil, port: nil)
         @host = host || ENV.fetch("AIJIGU_WEB_HOST", DEFAULT_HOST)
         @port = (port || ENV.fetch("AIJIGU_WEB_PORT", DEFAULT_PORT)).to_i
+        @aijigu_bin = File.expand_path("../../bin/aijigu", __dir__)
       end
 
       def start
@@ -40,18 +42,53 @@ module Aijigu
 
         method, path, = request_line.split(" ", 3)
 
-        # Consume remaining headers
+        # Parse headers
+        headers = {}
         while (line = client.gets)
           break if line.strip.empty?
+          key, value = line.split(":", 2)
+          headers[key.strip.downcase] = value.strip if key && value
         end
 
         if method == "GET" && path == "/"
           serve_root(client)
+        elsif method == "POST" && path == "/api/direction/add"
+          handle_direction_add(client, headers)
         else
           serve_not_found(client)
         end
       ensure
         client.close rescue nil
+      end
+
+      def handle_direction_add(client, headers)
+        content_length = headers["content-length"]&.to_i || 0
+        body = client.read(content_length) if content_length > 0
+
+        unless body && !body.strip.empty?
+          write_json_response(client, 400, { error: "Empty instruction" })
+          return
+        end
+
+        begin
+          data = JSON.parse(body)
+        rescue JSON::ParserError
+          write_json_response(client, 400, { error: "Invalid JSON" })
+          return
+        end
+
+        instruction = data["instruction"]&.strip
+        if instruction.nil? || instruction.empty?
+          write_json_response(client, 400, { error: "Empty instruction" })
+          return
+        end
+
+        # Run direction add in a background process
+        pid = spawn(@aijigu_bin, "direction", "add", "-m", instruction,
+                    out: "/dev/null", err: "/dev/null")
+        Process.detach(pid)
+
+        write_json_response(client, 202, { status: "accepted", message: "Direction add started" })
       end
 
       def serve_root(client)
@@ -104,19 +141,102 @@ module Aijigu
                 outline: none;
                 transition: border-color 0.15s;
               }
-              textarea:focus {
-                border-color: #888;
+              textarea:focus { border-color: #888; }
+              textarea::placeholder { color: #aaa; }
+              textarea:disabled { background: #f0f0f0; color: #999; }
+              .actions {
+                display: flex;
+                justify-content: flex-end;
+                margin-top: 0.75rem;
               }
-              textarea::placeholder {
-                color: #aaa;
+              button {
+                padding: 0.5rem 1.5rem;
+                font-family: inherit;
+                font-size: 0.95rem;
+                font-weight: 500;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                background: #fff;
+                color: #333;
+                cursor: pointer;
+                transition: background 0.15s, border-color 0.15s;
               }
+              button:hover { background: #eee; border-color: #888; }
+              button:disabled { cursor: not-allowed; opacity: 0.5; }
+              .notice {
+                margin-top: 0.75rem;
+                padding: 0.6rem 1rem;
+                border-radius: 6px;
+                font-size: 0.9rem;
+                display: none;
+              }
+              .notice.success { display: block; background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+              .notice.error { display: block; background: #fbe9e7; color: #c62828; border: 1px solid #ef9a9a; }
             </style>
           </head>
           <body>
             <div class="container">
               <h1>aijigu</h1>
-              <textarea placeholder="指示を入力..." autofocus></textarea>
+              <textarea id="instruction" placeholder="指示を入力..." autofocus></textarea>
+              <div class="actions">
+                <button id="submit" type="button">送信</button>
+              </div>
+              <div id="notice" class="notice"></div>
             </div>
+            <script>
+              const textarea = document.getElementById('instruction');
+              const submitBtn = document.getElementById('submit');
+              const notice = document.getElementById('notice');
+
+              function showNotice(msg, type) {
+                notice.textContent = msg;
+                notice.className = 'notice ' + type;
+              }
+
+              function clearNotice() {
+                notice.textContent = '';
+                notice.className = 'notice';
+              }
+
+              async function submit() {
+                const text = textarea.value.trim();
+                if (!text) return;
+
+                clearNotice();
+                submitBtn.disabled = true;
+                textarea.disabled = true;
+
+                try {
+                  const res = await fetch('/api/direction/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ instruction: text })
+                  });
+                  const data = await res.json();
+
+                  if (res.ok) {
+                    showNotice('タスク化を受け付けました', 'success');
+                    textarea.value = '';
+                  } else {
+                    showNotice(data.error || 'エラーが発生しました', 'error');
+                  }
+                } catch (e) {
+                  showNotice('通信エラーが発生しました', 'error');
+                }
+
+                submitBtn.disabled = false;
+                textarea.disabled = false;
+                textarea.focus();
+              }
+
+              submitBtn.addEventListener('click', submit);
+              textarea.addEventListener('keydown', function(e) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  submit();
+                }
+              });
+            </script>
           </body>
           </html>
         HTML
@@ -124,6 +244,12 @@ module Aijigu
 
       def serve_not_found(client)
         write_response(client, 404, "Not Found", "Not Found\n")
+      end
+
+      def write_json_response(client, status, data)
+        reason = { 200 => "OK", 202 => "Accepted", 400 => "Bad Request", 500 => "Internal Server Error" }[status] || "OK"
+        body = JSON.generate(data)
+        write_response(client, status, reason, body, content_type: "application/json; charset=utf-8")
       end
 
       def write_response(client, status, reason, body, content_type: "text/html; charset=utf-8")
