@@ -210,7 +210,7 @@ module Aijigu
       def root_html
         <<~HTML
           <!DOCTYPE html>
-          <html lang="ja">
+          <html lang="en">
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -379,9 +379,9 @@ module Aijigu
           <body>
             <div class="container">
               <h1>aijigu</h1>
-              <textarea id="instruction" placeholder="指示を入力..." autofocus></textarea>
+              <textarea id="instruction" placeholder="Enter instruction..." autofocus></textarea>
               <div class="actions">
-                <button id="submit" type="button">送信</button>
+                <button id="submit" type="button">Submit</button>
               </div>
               <div id="notice" class="notice"></div>
               <div class="directions">
@@ -434,16 +434,16 @@ module Aijigu
 
                   if (res.ok) {
                     const name = data.filename || '';
-                    showNotice('タスク化しました: ' + name, 'success');
+                    showNotice('Direction created: ' + name, 'success');
                     textarea.value = '';
                     lastSavedDraft = '';
                     fetch('/api/direction/draft', { method: 'DELETE' });
                     loadDirections();
                   } else {
-                    showNotice(data.error || 'エラーが発生しました', 'error');
+                    showNotice(data.error || 'An error occurred', 'error');
                   }
                 } catch (e) {
-                  showNotice('通信エラーが発生しました', 'error');
+                  showNotice('A network error occurred', 'error');
                 }
 
                 submitBtn.disabled = false;
@@ -505,10 +505,10 @@ module Aijigu
                     detailBody.textContent = data.content;
                     detailPanel.style.display = '';
                   } else {
-                    showNotice(data.error || 'エラーが発生しました', 'error');
+                    showNotice(data.error || 'An error occurred', 'error');
                   }
                 } catch (e) {
-                  showNotice('通信エラーが発生しました', 'error');
+                  showNotice('A network error occurred', 'error');
                 }
               }
 
