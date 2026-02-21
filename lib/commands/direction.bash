@@ -297,13 +297,29 @@ command_direction_auto() {
       echo "--- Direction #${next_id} completed"
     fi
 
-    # Slack notification: finished
+    # Slack notification: finished (include last_message if available)
     if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
-      if [[ $run_exit -ne 0 ]]; then
-        "$aijigu" notify slack "[aijigu auto] Direction #${next_id} (${direction_name}) finished (exit code: ${run_exit})" 2>/dev/null || true
-      else
-        "$aijigu" notify slack "[aijigu auto] Direction #${next_id} (${direction_name}) completed" 2>/dev/null || true
+      local last_msg=""
+      local last_msg_file="$AIJIGU_DIRECTION_DIR/.last_messages/${next_id}.txt"
+      if [[ -f "$last_msg_file" ]]; then
+        last_msg="$(cat "$last_msg_file")"
       fi
+
+      local slack_msg
+      if [[ $run_exit -ne 0 ]]; then
+        slack_msg="[aijigu auto] Direction #${next_id} (${direction_name}) finished (exit code: ${run_exit})"
+      else
+        slack_msg="[aijigu auto] Direction #${next_id} (${direction_name}) completed"
+      fi
+
+      if [[ -n "$last_msg" ]]; then
+        slack_msg="${slack_msg}
+\`\`\`
+${last_msg}
+\`\`\`"
+      fi
+
+      "$aijigu" notify slack "$slack_msg" 2>/dev/null || true
     fi
 
     # Track execution history (keep last 10)
