@@ -7,6 +7,7 @@
 require "socket"
 require "json"
 require "open3"
+require "securerandom"
 
 module Aijigu
   module Web
@@ -19,6 +20,8 @@ module Aijigu
         @port = (port || ENV.fetch("AIJIGU_WEB_PORT", DEFAULT_PORT)).to_i
         @aijigu_bin = File.expand_path("../../bin/aijigu", __dir__)
         @draft = ""
+        @submissions = {}
+        @submissions_mutex = Mutex.new
       end
 
       def start
@@ -28,9 +31,13 @@ module Aijigu
 
         loop do
           client = server.accept
-          handle_request(client)
+          Thread.new(client) do |c|
+            handle_request(c)
+          rescue => e
+            $stderr.puts "Error handling request: #{e.message}"
+          end
         rescue => e
-          $stderr.puts "Error handling request: #{e.message}"
+          $stderr.puts "Error accepting connection: #{e.message}"
         end
       ensure
         server&.close
@@ -60,6 +67,8 @@ module Aijigu
           handle_direction_show(client, path)
         elsif method == "POST" && path == "/api/direction/add"
           handle_direction_add(client, headers)
+        elsif method == "GET" && path&.start_with?("/api/submission/status")
+          handle_submission_status(client, path)
         elsif method == "GET" && path == "/api/direction/draft"
           handle_draft_get(client)
         elsif method == "PUT" && path == "/api/direction/draft"
@@ -167,14 +176,51 @@ module Aijigu
           return
         end
 
-        # Run direction add synchronously to capture the created filename
-        output, status = Open3.capture2(@aijigu_bin, "direction", "add", "-m", instruction)
+        # Create submission and process asynchronously
+        submission_id = SecureRandom.hex(8)
+        @submissions_mutex.synchronize do
+          @submissions[submission_id] = { id: submission_id, status: "pending", instruction: instruction }
+        end
 
-        if status.success?
-          filename = output.strip
-          write_json_response(client, 201, { status: "created", filename: filename })
+        Thread.new do
+          output, status = Open3.capture2(@aijigu_bin, "direction", "add", "-m", instruction)
+          @submissions_mutex.synchronize do
+            if status.success?
+              @submissions[submission_id][:status] = "created"
+              @submissions[submission_id][:filename] = output.strip
+            else
+              @submissions[submission_id][:status] = "error"
+              @submissions[submission_id][:error] = "Failed to create direction"
+            end
+          end
+        end
+
+        write_json_response(client, 202, { submission_id: submission_id })
+      end
+
+      def handle_submission_status(client, path)
+        _, query = path.split("?", 2)
+        params = {}
+        if query
+          query.split("&").each do |pair|
+            key, value = pair.split("=", 2)
+            params[key] = value
+          end
+        end
+
+        id = params["id"]
+        unless id
+          write_json_response(client, 400, { error: "Missing id parameter" })
+          return
+        end
+
+        submission = @submissions_mutex.synchronize { @submissions[id]&.dup }
+        if submission
+          # Don't send instruction text back in status polls
+          submission.delete(:instruction)
+          write_json_response(client, 200, submission)
         else
-          write_json_response(client, 500, { error: "Failed to create direction" })
+          write_json_response(client, 404, { error: "Submission not found" })
         end
       end
 
@@ -384,6 +430,89 @@ module Aijigu
                 word-wrap: break-word;
                 color: #333;
               }
+              .submissions {
+                margin-top: 0.75rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+              }
+              .submission-item {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0.5rem 0.75rem;
+                border-radius: 6px;
+                font-size: 0.85rem;
+                border: 1px solid #ccc;
+                background: #fff;
+              }
+              .submission-pending {
+                border-color: #90caf9;
+                background: #e3f2fd;
+              }
+              .submission-created {
+                border-color: #a5d6a7;
+                background: #e8f5e9;
+              }
+              .submission-error {
+                border-color: #ef9a9a;
+                background: #fbe9e7;
+              }
+              .submission-content {
+                display: flex;
+                flex-direction: column;
+                gap: 0.15rem;
+                min-width: 0;
+                flex: 1;
+              }
+              .submission-preview {
+                color: #555;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
+              .submission-status { font-size: 0.8rem; }
+              .submission-status.pending { color: #1565c0; }
+              .submission-status.success { color: #2e7d32; }
+              .submission-status.error { color: #c62828; }
+              .submission-actions {
+                display: flex;
+                align-items: center;
+                gap: 0.4rem;
+                margin-left: 0.5rem;
+                flex-shrink: 0;
+              }
+              .submission-action {
+                padding: 0.2rem 0.6rem;
+                font-size: 0.8rem;
+                border-radius: 4px;
+                border: 1px solid #ccc;
+                background: #fff;
+                cursor: pointer;
+              }
+              .submission-action:hover { background: #eee; border-color: #888; }
+              .submission-dismiss {
+                background: none;
+                border: none;
+                font-size: 1.1rem;
+                color: #888;
+                cursor: pointer;
+                padding: 0 0.2rem;
+                line-height: 1;
+              }
+              .submission-dismiss:hover { color: #333; }
+              @keyframes spin { to { transform: rotate(360deg); } }
+              .spinner {
+                display: inline-block;
+                width: 0.7rem;
+                height: 0.7rem;
+                border: 2px solid #90caf9;
+                border-top-color: #1565c0;
+                border-radius: 50%;
+                animation: spin 0.8s linear infinite;
+                vertical-align: middle;
+                margin-right: 0.3rem;
+              }
             </style>
           </head>
           <body>
@@ -394,6 +523,7 @@ module Aijigu
                 <button id="submit" type="button">Submit</button>
               </div>
               <div id="notice" class="notice"></div>
+              <div id="submissions" class="submissions" style="display:none;"></div>
               <div class="directions">
                 <h2 id="pending-toggle" class="expanded">Pending</h2>
                 <ul id="pending-list" class="direction-list"></ul>
@@ -414,7 +544,10 @@ module Aijigu
               const textarea = document.getElementById('instruction');
               const submitBtn = document.getElementById('submit');
               const notice = document.getElementById('notice');
+              const submissionsEl = document.getElementById('submissions');
               let lastSavedDraft = '';
+              let submissions = [];
+              let pollingInterval = null;
 
               function showNotice(msg, type) {
                 notice.textContent = msg;
@@ -430,9 +563,12 @@ module Aijigu
                 const text = textarea.value.trim();
                 if (!text) return;
 
+                // Clear textarea immediately so user can keep writing
+                textarea.value = '';
+                lastSavedDraft = '';
+                fetch('/api/direction/draft', { method: 'DELETE' });
+                textarea.focus();
                 clearNotice();
-                submitBtn.disabled = true;
-                textarea.disabled = true;
 
                 try {
                   const res = await fetch('/api/direction/add', {
@@ -442,23 +578,133 @@ module Aijigu
                   });
                   const data = await res.json();
 
-                  if (res.ok) {
-                    const name = data.filename || '';
-                    showNotice('Direction created: ' + name, 'success');
-                    textarea.value = '';
-                    lastSavedDraft = '';
-                    fetch('/api/direction/draft', { method: 'DELETE' });
-                    loadDirections();
+                  if (res.ok && data.submission_id) {
+                    addSubmission(data.submission_id, text);
                   } else {
-                    showNotice(data.error || 'An error occurred', 'error');
+                    addLocalError(text, data.error || 'An error occurred');
                   }
                 } catch (e) {
-                  showNotice('A network error occurred', 'error');
+                  addLocalError(text, 'A network error occurred');
                 }
+              }
 
-                submitBtn.disabled = false;
-                textarea.disabled = false;
-                textarea.focus();
+              function addSubmission(id, instruction) {
+                submissions.push({ id: id, instruction: instruction, status: 'pending', startTime: Date.now() });
+                renderSubmissions();
+                startPolling();
+              }
+
+              function addLocalError(instruction, error) {
+                submissions.push({ id: 'local-' + Date.now(), instruction: instruction, status: 'error', error: error });
+                renderSubmissions();
+              }
+
+              function startPolling() {
+                if (pollingInterval) return;
+                pollingInterval = setInterval(pollSubmissions, 2000);
+              }
+
+              function stopPollingIfDone() {
+                if (!submissions.some(function(s) { return s.status === 'pending'; })) {
+                  if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
+                }
+              }
+
+              async function pollSubmissions() {
+                var pending = submissions.filter(function(s) { return s.status === 'pending'; });
+                for (var i = 0; i < pending.length; i++) {
+                  var sub = pending[i];
+                  // Timeout after 5 minutes
+                  if (Date.now() - sub.startTime > 300000) {
+                    sub.status = 'error';
+                    sub.error = 'Timed out';
+                    renderSubmissions();
+                    continue;
+                  }
+                  try {
+                    var res = await fetch('/api/submission/status?id=' + sub.id);
+                    var data = await res.json();
+                    if (data.status === 'created') {
+                      sub.status = 'created';
+                      sub.filename = data.filename;
+                      loadDirections();
+                      scheduleAutoDismiss(sub.id);
+                    } else if (data.status === 'error') {
+                      sub.status = 'error';
+                      sub.error = data.error || 'Failed to create direction';
+                    }
+                  } catch (e) {
+                    // Keep polling on network errors
+                  }
+                }
+                renderSubmissions();
+                stopPollingIfDone();
+              }
+
+              function scheduleAutoDismiss(id) {
+                setTimeout(function() { dismissSubmission(id); }, 8000);
+              }
+
+              function dismissSubmission(id) {
+                submissions = submissions.filter(function(s) { return s.id !== id; });
+                renderSubmissions();
+              }
+
+              function retrySubmission(id) {
+                var sub = submissions.find(function(s) { return s.id === id; });
+                if (sub) {
+                  textarea.value = sub.instruction;
+                  textarea.focus();
+                  dismissSubmission(id);
+                }
+              }
+
+              function renderSubmissions() {
+                if (submissions.length === 0) {
+                  submissionsEl.style.display = 'none';
+                  return;
+                }
+                submissionsEl.style.display = '';
+                submissionsEl.innerHTML = '';
+
+                submissions.forEach(function(sub) {
+                  var div = document.createElement('div');
+                  div.className = 'submission-item submission-' + sub.status;
+
+                  var preview = sub.instruction.split('\\n')[0];
+                  if (preview.length > 80) preview = preview.substring(0, 80) + '...';
+
+                  var statusHtml = '';
+                  var actionsHtml = '';
+                  if (sub.status === 'pending') {
+                    statusHtml = '<span class="submission-status pending"><span class="spinner"></span>Submitting...</span>';
+                  } else if (sub.status === 'created') {
+                    statusHtml = '<span class="submission-status success">Created: ' + escapeHtml(sub.filename || '') + '</span>';
+                  } else {
+                    statusHtml = '<span class="submission-status error">' + escapeHtml(sub.error || 'Error') + '</span>';
+                    actionsHtml = '<button class="submission-action" data-retry="' + escapeHtml(sub.id) + '">Retry</button>';
+                  }
+
+                  div.innerHTML =
+                    '<div class="submission-content">' +
+                      '<span class="submission-preview">' + escapeHtml(preview) + '</span>' +
+                      statusHtml +
+                    '</div>' +
+                    '<div class="submission-actions">' +
+                      actionsHtml +
+                      '<button class="submission-dismiss" data-dismiss="' + escapeHtml(sub.id) + '">&times;</button>' +
+                    '</div>';
+
+                  submissionsEl.appendChild(div);
+                });
+
+                // Attach event listeners
+                submissionsEl.querySelectorAll('[data-retry]').forEach(function(btn) {
+                  btn.addEventListener('click', function() { retrySubmission(btn.getAttribute('data-retry')); });
+                });
+                submissionsEl.querySelectorAll('[data-dismiss]').forEach(function(btn) {
+                  btn.addEventListener('click', function() { dismissSubmission(btn.getAttribute('data-dismiss')); });
+                });
               }
 
               submitBtn.addEventListener('click', submit);
