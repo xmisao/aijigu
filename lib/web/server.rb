@@ -52,6 +52,8 @@ module Aijigu
 
         if method == "GET" && path == "/"
           serve_root(client)
+        elsif method == "GET" && path == "/api/direction/list"
+          handle_direction_list(client)
         elsif method == "POST" && path == "/api/direction/add"
           handle_direction_add(client, headers)
         else
@@ -59,6 +61,43 @@ module Aijigu
         end
       ensure
         client.close rescue nil
+      end
+
+      def handle_direction_list(client)
+        dir = direction_dir
+        completed_dir = File.join(dir, "completed")
+
+        pending = list_directions(dir, completed: false)
+        completed = list_directions(completed_dir, completed: true)
+
+        write_json_response(client, 200, { pending: pending, completed: completed })
+      end
+
+      def direction_dir
+        env_dir = ENV["AIJIGU_DIRECTION_DIR"]
+        if env_dir && !env_dir.empty?
+          File.expand_path(env_dir, File.expand_path("../..", __dir__))
+        else
+          File.expand_path("../../.directions", __dir__)
+        end
+      end
+
+      def list_directions(dir, completed:)
+        return [] unless File.directory?(dir)
+
+        Dir.glob(File.join(dir, "[0-9]*-*.md")).filter_map do |path|
+          basename = File.basename(path, ".md")
+          match = basename.match(/\A(\d+)-(.+)\z/)
+          next unless match
+
+          id = match[1].to_i
+          title = match[2]
+          content = File.read(path).strip rescue ""
+          # Take only lines before work notes (--- delimiter)
+          summary = content.lines.first&.strip || ""
+
+          { id: id, title: title, filename: File.basename(path), completed: completed, summary: summary }
+        end.sort_by { |d| d[:id] }
       end
 
       def handle_direction_add(client, headers)
@@ -172,6 +211,57 @@ module Aijigu
               }
               .notice.success { display: block; background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
               .notice.error { display: block; background: #fbe9e7; color: #c62828; border: 1px solid #ef9a9a; }
+              .directions {
+                margin-top: 2rem;
+                width: 100%;
+              }
+              .directions h2 {
+                font-size: 1rem;
+                font-weight: 600;
+                color: #555;
+                margin-bottom: 0.5rem;
+                cursor: pointer;
+                user-select: none;
+              }
+              .directions h2:hover { color: #333; }
+              .direction-list {
+                list-style: none;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                background: #fff;
+                overflow: hidden;
+              }
+              .direction-list:empty::after {
+                content: "No directions";
+                display: block;
+                padding: 0.75rem 1rem;
+                color: #aaa;
+                font-size: 0.9rem;
+              }
+              .direction-item {
+                padding: 0.6rem 1rem;
+                border-bottom: 1px solid #eee;
+                font-size: 0.9rem;
+                display: flex;
+                align-items: baseline;
+                gap: 0.5rem;
+              }
+              .direction-item:last-child { border-bottom: none; }
+              .direction-id {
+                color: #888;
+                font-size: 0.8rem;
+                min-width: 2rem;
+              }
+              .direction-title { color: #333; }
+              .direction-summary {
+                color: #888;
+                font-size: 0.8rem;
+                margin-left: auto;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 40%;
+              }
             </style>
           </head>
           <body>
@@ -182,6 +272,14 @@ module Aijigu
                 <button id="submit" type="button">送信</button>
               </div>
               <div id="notice" class="notice"></div>
+              <div class="directions">
+                <h2 id="pending-toggle">Pending</h2>
+                <ul id="pending-list" class="direction-list"></ul>
+              </div>
+              <div class="directions">
+                <h2 id="completed-toggle">Completed</h2>
+                <ul id="completed-list" class="direction-list" style="display:none;"></ul>
+              </div>
             </div>
             <script>
               const textarea = document.getElementById('instruction');
@@ -236,6 +334,50 @@ module Aijigu
                   submit();
                 }
               });
+
+              const pendingList = document.getElementById('pending-list');
+              const completedList = document.getElementById('completed-list');
+              const pendingToggle = document.getElementById('pending-toggle');
+              const completedToggle = document.getElementById('completed-toggle');
+
+              function renderDirections(list, directions) {
+                list.innerHTML = '';
+                directions.forEach(function(d) {
+                  const li = document.createElement('li');
+                  li.className = 'direction-item';
+                  li.innerHTML =
+                    '<span class="direction-id">#' + d.id + '</span>' +
+                    '<span class="direction-title">' + escapeHtml(d.title) + '</span>' +
+                    '<span class="direction-summary">' + escapeHtml(d.summary) + '</span>';
+                  list.appendChild(li);
+                });
+              }
+
+              function escapeHtml(str) {
+                var d = document.createElement('div');
+                d.textContent = str;
+                return d.innerHTML;
+              }
+
+              function toggleList(el) {
+                el.style.display = el.style.display === 'none' ? '' : 'none';
+              }
+
+              pendingToggle.addEventListener('click', function() { toggleList(pendingList); });
+              completedToggle.addEventListener('click', function() { toggleList(completedList); });
+
+              async function loadDirections() {
+                try {
+                  const res = await fetch('/api/direction/list');
+                  const data = await res.json();
+                  renderDirections(pendingList, data.pending || []);
+                  renderDirections(completedList, data.completed || []);
+                } catch (e) {
+                  // Silently ignore load errors
+                }
+              }
+
+              loadDirections();
             </script>
           </body>
           </html>
