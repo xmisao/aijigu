@@ -145,6 +145,16 @@ command_direction_run() {
     exit 1
   fi
 
+  local direction_name
+  direction_name="$(basename "$match" .md)"
+
+  local aijigu="$AIJIGU_ROOT/bin/aijigu"
+
+  # Slack notification: started
+  if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
+    "$aijigu" notify slack "[aijigu] Direction #${id} (${direction_name}) started" 2>/dev/null || true
+  fi
+
   local max_retries="${AIJIGU_DIRECTION_INTERNAL_RETRY:-}"
   local attempt=0
   local run_exit=0
@@ -238,6 +248,31 @@ ${retry_prompt}"
 
     echo "--- Direction #${id}: retrying (attempt $((attempt + 1)))..." >&2
   done
+
+  # Slack notification: finished (include last_message if available)
+  if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
+    local last_msg=""
+    local last_msg_file="$last_message_dir/${id}.txt"
+    if [[ -f "$last_msg_file" ]]; then
+      last_msg="$(cat "$last_msg_file")"
+    fi
+
+    local slack_msg
+    if [[ $run_exit -ne 0 ]]; then
+      slack_msg="[aijigu] Direction #${id} (${direction_name}) finished (exit code: ${run_exit})"
+    else
+      slack_msg="[aijigu] Direction #${id} (${direction_name}) completed"
+    fi
+
+    if [[ -n "$last_msg" ]]; then
+      slack_msg="${slack_msg}
+\`\`\`
+${last_msg}
+\`\`\`"
+    fi
+
+    "$aijigu" notify slack "$slack_msg" 2>/dev/null || true
+  fi
 
   exit "$run_exit"
 }
@@ -341,11 +376,6 @@ command_direction_auto() {
 
     echo "--- Starting direction #${next_id}"
 
-    # Slack notification: started
-    if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
-      "$aijigu" notify slack "[aijigu auto] Direction #${next_id} (${direction_name}) started" 2>/dev/null || true
-    fi
-
     set +e
     "$aijigu" direction run "$next_id" | "$aijigu" utils pretty_claude_stream_json
     local run_exit=${PIPESTATUS[0]}
@@ -355,31 +385,6 @@ command_direction_auto() {
       echo "--- Direction #${next_id} exited with code ${run_exit}"
     else
       echo "--- Direction #${next_id} completed"
-    fi
-
-    # Slack notification: finished (include last_message if available)
-    if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
-      local last_msg=""
-      local last_msg_file="$AIJIGU_DIRECTION_DIR/.last_messages/${next_id}.txt"
-      if [[ -f "$last_msg_file" ]]; then
-        last_msg="$(cat "$last_msg_file")"
-      fi
-
-      local slack_msg
-      if [[ $run_exit -ne 0 ]]; then
-        slack_msg="[aijigu auto] Direction #${next_id} (${direction_name}) finished (exit code: ${run_exit})"
-      else
-        slack_msg="[aijigu auto] Direction #${next_id} (${direction_name}) completed"
-      fi
-
-      if [[ -n "$last_msg" ]]; then
-        slack_msg="${slack_msg}
-\`\`\`
-${last_msg}
-\`\`\`"
-      fi
-
-      "$aijigu" notify slack "$slack_msg" 2>/dev/null || true
     fi
 
     # Track execution history (keep last 10)
