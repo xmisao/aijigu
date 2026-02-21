@@ -203,7 +203,7 @@ ${retry_prompt}"
 
     # Extract last message from stream-json result event
     local result_text
-    result_text="$(jq -r 'select(.type == "result") | .result // ""' "$tmp_stream" 2>/dev/null | tail -1)"
+    result_text="$(jq -r -s '[.[] | select(.type == "result")] | last | .result // ""' "$tmp_stream" 2>/dev/null)"
     result_text="${result_text:-}"
     # Prefer the first attempt message (substantive work).
     # Fall back to later attempts if the first produced no result.
@@ -284,9 +284,9 @@ ${retry_prompt}"
     fi
 
     if [[ -n "$notes_source" ]]; then
-      # Extract work notes: everything after the first --- separator
+      # Extract work notes: everything after the first --- separator or ## 作業メモ/Work Notes heading
       # Remove ## headings (e.g., "## 作業メモ" / "## Work Notes") and leading blank lines
-      last_msg="$(awk 'found{print} /^---$/{found=1}' "$notes_source" | sed '/^## /d' | sed -n '/[^ \t]/,$p')"
+      last_msg="$(awk 'found{print} /^---$/{found=1} /^## (作業メモ|Work Notes)/{found=1}' "$notes_source" | sed '/^## /d' | sed -n '/[^ \t]/,$p')"
       # Trim trailing whitespace
       last_msg="$(printf '%s' "$last_msg" | sed 's/[[:space:]]*$//')"
     fi
