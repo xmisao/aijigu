@@ -520,18 +520,19 @@ module Aijigu
       end
 
       def serve_root(client)
-        body = root_html(show_logout: auth_required?)
+        dir_label = File.basename(File.dirname(direction_dir))
+        body = root_html(show_logout: auth_required?, dir_label: dir_label)
         write_response(client, 200, "OK", body)
       end
 
-      def root_html(show_logout: false)
+      def root_html(show_logout: false, dir_label: nil)
         <<~HTML
           <!DOCTYPE html>
           <html lang="en">
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>AI Jig Utility</title>
+            <title>#{dir_label ? "#{dir_label} - " : ""}AI Jig Utility</title>
             <style>
               *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
               body {
@@ -549,6 +550,12 @@ module Aijigu
                 font-weight: 600;
                 margin-bottom: 1rem;
                 color: #555;
+              }
+              .dir-label {
+                font-size: 0.75rem;
+                color: #bbb;
+                font-weight: 400;
+                margin-left: 0.5rem;
               }
               .header-row {
                 display: flex;
@@ -871,7 +878,7 @@ module Aijigu
           <body>
             <div class="container">
               <div class="header-row">
-                <h1>AI Jig Utility</h1>
+                <h1>AI Jig Utility#{dir_label ? "<span class=\"dir-label\">#{dir_label}</span>" : ""}</h1>
                 #{show_logout ? '<form method="POST" action="/auth/logout" style="margin:0;"><button type="submit" class="logout-btn">Logout</button></form>' : ''}
               </div>
               <textarea id="instruction" placeholder="Enter instruction..." autofocus></textarea>
