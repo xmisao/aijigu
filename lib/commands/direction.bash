@@ -279,6 +279,11 @@ ${retry_prompt}"
     echo "--- Direction #${id}: retrying (attempt $((attempt + 1)))..." >&2
   done
 
+  # Remove active state file immediately so the web UI stops showing
+  # the direction as active while post-run tasks (e.g. Slack) are processed.
+  rm -f "$active_file"
+  trap - EXIT INT TERM HUP
+
   # Slack notification: finished (include work notes from direction file)
   if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
     local last_msg=""
@@ -345,10 +350,6 @@ ${stats_line}"
 
     "$aijigu" _notify slack "$slack_msg" 2>/dev/null || true
   fi
-
-  # Remove active state file (also handled by trap, but be explicit)
-  rm -f "$active_file"
-  trap - EXIT INT TERM HUP
 
   exit "$run_exit"
 }
