@@ -27,7 +27,7 @@ COMMAND="$1"
 shift
 
 case "$COMMAND" in
-  run)
+  _run)
     source "$AIJIGU_ROOT/lib/commands/run.bash"
     command_run "$@"
     ;;

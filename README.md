@@ -19,12 +19,11 @@ Set `AIJIGU_WEB_USERNAME` and `AIJIGU_WEB_PASSWORD` to enable web authentication
 
 ## Commands
 
-- `aijigu run <prompt>` - Run a prompt via `claude -p`.
-
 ### `aijigu direction`
 
 Manage and execute direction files — task definitions that Claude works through autonomously.
 
+- `aijigu direction init` - Initialize the direction directory.
 - `aijigu direction add [-f <file> | -m <text>]` - Create a new direction from a file or text.
 - `aijigu direction list [--completed]` - List pending or completed directions.
 - `aijigu direction show <id>` - Display a direction's content.
@@ -41,9 +40,9 @@ Web UI for browsing and submitting directions.
 
 Internal commands are prefixed with `_` and are not intended for direct use. These are internal APIs used by other commands.
 
+- `aijigu _run <prompt>` - Run a prompt via `claude -p`.
 - `aijigu _notify slack <message>` - Send a message to Slack via incoming webhook.
 - `aijigu _utils pretty_claude_stream_json` - Format Claude's stream-json output.
-- `aijigu direction _init` - Initialize the direction directory.
 - `aijigu direction _next` - Show the ID of the next direction to work on.
 - `aijigu direction _continue <json>` - Decide whether to continue the auto loop.
 - `aijigu direction _last_message [id]` - Show the last message from a direction execution.

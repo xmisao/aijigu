@@ -10,7 +10,7 @@ command_direction() {
   shift
 
   case "$subcommand" in
-    _init)
+    init)
       command_direction_init "$@"
       ;;
     add)

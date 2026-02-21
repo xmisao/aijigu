@@ -2,7 +2,7 @@
 
 command_run() {
   if [[ $# -eq 0 ]]; then
-    echo "Usage: aijigu run <prompt>" >&2
+    echo "Usage: aijigu _run <prompt>" >&2
     exit 1
   fi
 
