@@ -199,10 +199,12 @@ ${retry_prompt}"
     run_exit=${PIPESTATUS[0]}
     set -e
 
-    # Extract and save last message from stream-json result event
+    # Extract last message from stream-json result event
     local result_text
     result_text="$(jq -r 'select(.type == "result") | .result // ""' "$tmp_stream" 2>/dev/null | tail -1 || true)"
-    if [[ -n "$result_text" ]]; then
+    # Save only on the first attempt so that the substantive work message
+    # is used for Slack notifications instead of a later retry confirmation.
+    if [[ -n "$result_text" && $attempt -eq 1 ]]; then
       printf '%s\n' "$result_text" > "$last_message_dir/${id}.txt"
     fi
     rm -f "$tmp_stream"
