@@ -203,17 +203,20 @@ ${retry_prompt}"
 
     # Extract last message from stream-json result event
     local result_text
-    result_text="$(jq -r 'select(.type == "result") | .result // ""' "$tmp_stream" 2>/dev/null | tail -1 || true)"
-    # Save only on the first attempt so that the substantive work message
-    # is used for Slack notifications instead of a later retry confirmation.
-    if [[ -n "$result_text" && $attempt -eq 1 ]]; then
+    result_text="$(jq -r 'select(.type == "result") | .result // ""' "$tmp_stream" 2>/dev/null | tail -1)"
+    result_text="${result_text:-}"
+    # Prefer the first attempt message (substantive work).
+    # Fall back to later attempts if the first produced no result.
+    if [[ -n "$result_text" && ( $attempt -eq 1 || ! -f "$last_message_dir/${id}.txt" ) ]]; then
       printf '%s\n' "$result_text" > "$last_message_dir/${id}.txt"
     fi
 
     # Accumulate cost and duration across attempts
     local attempt_cost attempt_duration
-    attempt_cost="$(jq -r 'select(.type == "result") | .total_cost_usd // 0' "$tmp_stream" 2>/dev/null | tail -1 || echo 0)"
-    attempt_duration="$(jq -r 'select(.type == "result") | .duration_ms // 0' "$tmp_stream" 2>/dev/null | tail -1 || echo 0)"
+    attempt_cost="$(jq -r 'select(.type == "result") | .total_cost_usd // 0' "$tmp_stream" 2>/dev/null | tail -1)"
+    attempt_cost="${attempt_cost:-0}"
+    attempt_duration="$(jq -r 'select(.type == "result") | .duration_ms // 0' "$tmp_stream" 2>/dev/null | tail -1)"
+    attempt_duration="${attempt_duration:-0}"
     total_cost_usd="$(awk -v a="$total_cost_usd" -v b="$attempt_cost" 'BEGIN{printf "%.6f", a+b}')"
     total_duration_ms="$(awk -v a="$total_duration_ms" -v b="$attempt_duration" 'BEGIN{printf "%d", a+b}')"
 
@@ -273,6 +276,12 @@ ${retry_prompt}"
     local last_msg_file="$last_message_dir/${id}.txt"
     if [[ -f "$last_msg_file" ]]; then
       last_msg="$(cat "$last_msg_file")"
+      # Trim leading/trailing whitespace
+      last_msg="$(printf '%s' "$last_msg" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      # Truncate to 500 chars
+      if [[ "${#last_msg}" -gt 500 ]]; then
+        last_msg="${last_msg:0:500}..."
+      fi
     fi
 
     local slack_msg
@@ -301,9 +310,7 @@ ${stats_line}"
 
     if [[ -n "$last_msg" ]]; then
       slack_msg="${slack_msg}
-\`\`\`
-${last_msg}
-\`\`\`"
+${last_msg}"
     fi
 
     "$aijigu" _notify slack "$slack_msg" 2>/dev/null || true
