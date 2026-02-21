@@ -54,6 +54,8 @@ module Aijigu
           serve_root(client)
         elsif method == "GET" && path == "/api/direction/list"
           handle_direction_list(client)
+        elsif method == "GET" && path&.start_with?("/api/direction/show")
+          handle_direction_show(client, path)
         elsif method == "POST" && path == "/api/direction/add"
           handle_direction_add(client, headers)
         else
@@ -71,6 +73,41 @@ module Aijigu
         completed = list_directions(completed_dir, completed: true)
 
         write_json_response(client, 200, { pending: pending, completed: completed })
+      end
+
+      def handle_direction_show(client, path)
+        # Parse query string for id parameter
+        _, query = path.split("?", 2)
+        params = {}
+        if query
+          query.split("&").each do |pair|
+            key, value = pair.split("=", 2)
+            params[key] = value
+          end
+        end
+
+        id = params["id"]
+        unless id && id.match?(/\A\d+\z/)
+          write_json_response(client, 400, { error: "Missing or invalid id parameter" })
+          return
+        end
+
+        dir = direction_dir
+        # Search pending first, then completed
+        match = Dir.glob(File.join(dir, "#{id}-*.md")).first
+        match ||= Dir.glob(File.join(dir, "completed", "#{id}-*.md")).first
+
+        unless match
+          write_json_response(client, 404, { error: "Direction not found" })
+          return
+        end
+
+        content = File.read(match) rescue ""
+        basename = File.basename(match, ".md")
+        m = basename.match(/\A(\d+)-(.+)\z/)
+        title = m ? m[2] : basename
+
+        write_json_response(client, 200, { id: id.to_i, title: title, content: content })
       end
 
       def direction_dir
@@ -262,6 +299,46 @@ module Aijigu
                 text-overflow: ellipsis;
                 max-width: 40%;
               }
+              .direction-item { cursor: pointer; }
+              .direction-item:hover { background: #f0f0f0; }
+              .direction-detail {
+                margin-top: 1rem;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                background: #fff;
+                overflow: hidden;
+              }
+              .direction-detail-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 0.6rem 1rem;
+                border-bottom: 1px solid #eee;
+                background: #fafafa;
+              }
+              .direction-detail-header span {
+                font-size: 0.95rem;
+                font-weight: 600;
+                color: #333;
+              }
+              .direction-detail-close {
+                background: none;
+                border: none;
+                font-size: 1.2rem;
+                color: #888;
+                cursor: pointer;
+                padding: 0 0.25rem;
+                line-height: 1;
+              }
+              .direction-detail-close:hover { color: #333; }
+              .direction-detail-body {
+                padding: 1rem;
+                font-size: 0.9rem;
+                line-height: 1.7;
+                white-space: pre-wrap;
+                word-wrap: break-word;
+                color: #333;
+              }
             </style>
           </head>
           <body>
@@ -279,6 +356,13 @@ module Aijigu
               <div class="directions">
                 <h2 id="completed-toggle">Completed</h2>
                 <ul id="completed-list" class="direction-list" style="display:none;"></ul>
+              </div>
+              <div id="direction-detail" class="direction-detail" style="display:none;">
+                <div class="direction-detail-header">
+                  <span id="direction-detail-title"></span>
+                  <button class="direction-detail-close" id="direction-detail-close" type="button">&times;</button>
+                </div>
+                <div class="direction-detail-body" id="direction-detail-body"></div>
               </div>
             </div>
             <script>
@@ -349,6 +433,7 @@ module Aijigu
                     '<span class="direction-id">#' + d.id + '</span>' +
                     '<span class="direction-title">' + escapeHtml(d.title) + '</span>' +
                     '<span class="direction-summary">' + escapeHtml(d.summary) + '</span>';
+                  li.addEventListener('click', function() { showDirection(d.id); });
                   list.appendChild(li);
                 });
               }
@@ -365,6 +450,31 @@ module Aijigu
 
               pendingToggle.addEventListener('click', function() { toggleList(pendingList); });
               completedToggle.addEventListener('click', function() { toggleList(completedList); });
+
+              const detailPanel = document.getElementById('direction-detail');
+              const detailTitle = document.getElementById('direction-detail-title');
+              const detailBody = document.getElementById('direction-detail-body');
+              const detailClose = document.getElementById('direction-detail-close');
+
+              async function showDirection(id) {
+                try {
+                  const res = await fetch('/api/direction/show?id=' + id);
+                  const data = await res.json();
+                  if (res.ok) {
+                    detailTitle.textContent = '#' + data.id + ' ' + data.title;
+                    detailBody.textContent = data.content;
+                    detailPanel.style.display = '';
+                  } else {
+                    showNotice(data.error || 'エラーが発生しました', 'error');
+                  }
+                } catch (e) {
+                  showNotice('通信エラーが発生しました', 'error');
+                }
+              }
+
+              detailClose.addEventListener('click', function() {
+                detailPanel.style.display = 'none';
+              });
 
               async function loadDirections() {
                 try {
@@ -389,7 +499,7 @@ module Aijigu
       end
 
       def write_json_response(client, status, data)
-        reason = { 200 => "OK", 202 => "Accepted", 400 => "Bad Request", 500 => "Internal Server Error" }[status] || "OK"
+        reason = { 200 => "OK", 202 => "Accepted", 400 => "Bad Request", 404 => "Not Found", 500 => "Internal Server Error" }[status] || "OK"
         body = JSON.generate(data)
         write_response(client, status, reason, body, content_type: "application/json; charset=utf-8")
       end
