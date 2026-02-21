@@ -150,8 +150,9 @@ module Aijigu
           # Take only lines before work notes (--- delimiter)
           summary = content.lines.first&.strip || ""
 
-          { id: id, title: title, filename: File.basename(path), completed: completed, summary: summary }
-        end.sort_by { |d| d[:id] }
+          { id: id, title: title, filename: File.basename(path), completed: completed, summary: summary,
+            mtime: File.mtime(path).to_f }
+        end.sort_by { |d| completed ? -d[:mtime] : d[:id] }
       end
 
       def handle_direction_add(client, headers)
