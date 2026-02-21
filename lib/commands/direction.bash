@@ -28,6 +28,9 @@ command_direction() {
     continue)
       command_direction_continue "$@"
       ;;
+    last_message)
+      command_direction_last_message "$@"
+      ;;
     *)
       echo "aijigu direction: unknown subcommand '${subcommand}'" >&2
       exit 1
@@ -160,8 +163,26 @@ If you cannot complete the work, still follow the same steps to record what was 
 Never use Plan mode.
 The user will not provide any additional instructions or approvals. Work autonomously."
 
-  source "$AIJIGU_ROOT/lib/commands/run.bash"
-  command_run "$prompt" "$@"
+  # Run claude, capturing stream-json output to extract last message
+  local tmp_stream
+  tmp_stream="$(mktemp)"
+
+  set +e
+  CLAUDECODE= claude -p "$prompt" --output-format stream-json --verbose --dangerously-skip-permissions "$@" | tee "$tmp_stream"
+  local run_exit=${PIPESTATUS[0]}
+  set -e
+
+  # Extract and save last message from stream-json result event
+  local last_message_dir="$AIJIGU_DIRECTION_DIR/.last_messages"
+  mkdir -p "$last_message_dir"
+  local result_text
+  result_text="$(jq -r 'select(.type == "result") | .result // ""' "$tmp_stream" 2>/dev/null | tail -1 || true)"
+  if [[ -n "$result_text" ]]; then
+    printf '%s\n' "$result_text" > "$last_message_dir/${id}.txt"
+  fi
+
+  rm -f "$tmp_stream"
+  exit "$run_exit"
 }
 
 command_direction_next() {
@@ -192,6 +213,38 @@ If there are no pending directions, output nothing." \
   fi
 
   echo "$id"
+}
+
+command_direction_last_message() {
+  if [[ -z "${AIJIGU_DIRECTION_DIR:-}" ]]; then
+    echo "Error: AIJIGU_DIRECTION_DIR is not set." >&2
+    exit 1
+  fi
+
+  local last_message_dir="$AIJIGU_DIRECTION_DIR/.last_messages"
+
+  if [[ $# -eq 0 ]]; then
+    # No ID specified: show the most recently modified last_message file
+    if [[ ! -d "$last_message_dir" ]]; then
+      echo "No last messages found." >&2
+      exit 1
+    fi
+    local latest
+    latest="$(ls -t "$last_message_dir"/*.txt 2>/dev/null | head -1 || true)"
+    if [[ -z "$latest" ]]; then
+      echo "No last messages found." >&2
+      exit 1
+    fi
+    cat "$latest"
+  else
+    local id="$1"
+    local msg_file="$last_message_dir/${id}.txt"
+    if [[ ! -f "$msg_file" ]]; then
+      echo "No last message found for direction #${id}." >&2
+      exit 1
+    fi
+    cat "$msg_file"
+  fi
 }
 
 command_direction_auto() {
