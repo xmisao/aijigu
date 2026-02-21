@@ -520,7 +520,7 @@ module Aijigu
       end
 
       def serve_root(client)
-        dir_label = File.basename(File.dirname(direction_dir))
+        dir_label = "#{Socket.gethostname}:#{direction_dir}"
         body = root_html(show_logout: auth_required?, dir_label: dir_label)
         write_response(client, 200, "OK", body)
       end
