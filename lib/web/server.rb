@@ -8,12 +8,15 @@ require "socket"
 require "json"
 require "open3"
 require "securerandom"
+require "digest"
 
 module Aijigu
   module Web
     class Server
       DEFAULT_HOST = "127.0.0.1"
       DEFAULT_PORT = 8080
+      SESSION_COOKIE_NAME = "aijigu_session"
+      SESSION_TTL = 24 * 60 * 60 # 24 hours
 
       def initialize(host: nil, port: nil)
         @host = host || ENV.fetch("AIJIGU_WEB_HOST", DEFAULT_HOST)
@@ -22,6 +25,10 @@ module Aijigu
         @draft = ""
         @submissions = {}
         @submissions_mutex = Mutex.new
+        @sessions = {}
+        @sessions_mutex = Mutex.new
+        @auth_username = ENV["AIJIGU_WEB_USERNAME"]
+        @auth_password = ENV["AIJIGU_WEB_PASSWORD"]
       end
 
       def start
@@ -57,6 +64,25 @@ module Aijigu
           break if line.strip.empty?
           key, value = line.split(":", 2)
           headers[key.strip.downcase] = value.strip if key && value
+        end
+
+        # Authentication check
+        if auth_required?
+          # Login endpoint is always accessible
+          if method == "POST" && path == "/auth/login"
+            handle_login(client, headers)
+            return
+          end
+
+          cookies = parse_cookies(headers)
+          unless valid_session?(cookies[SESSION_COOKIE_NAME])
+            if method == "GET" && path == "/"
+              serve_login_page(client)
+            else
+              write_json_response(client, 401, { error: "Authentication required" })
+            end
+            return
+          end
         end
 
         if method == "GET" && path == "/"
@@ -280,6 +306,202 @@ module Aijigu
       def handle_draft_delete(client)
         @draft = ""
         write_json_response(client, 200, { status: "cleared" })
+      end
+
+      # --- Authentication ---
+
+      def auth_required?
+        @auth_username && !@auth_username.empty? && @auth_password && !@auth_password.empty?
+      end
+
+      def parse_cookies(headers)
+        cookies = {}
+        cookie_header = headers["cookie"]
+        return cookies unless cookie_header
+        cookie_header.split(";").each do |pair|
+          key, value = pair.strip.split("=", 2)
+          cookies[key] = value if key && value
+        end
+        cookies
+      end
+
+      def valid_session?(session_id)
+        return false unless session_id
+        @sessions_mutex.synchronize do
+          session = @sessions[session_id]
+          return false unless session
+          if Time.now > session[:expires_at]
+            @sessions.delete(session_id)
+            return false
+          end
+          true
+        end
+      end
+
+      def create_session
+        session_id = SecureRandom.hex(32)
+        @sessions_mutex.synchronize do
+          cleanup_expired_sessions_locked
+          @sessions[session_id] = { expires_at: Time.now + SESSION_TTL }
+        end
+        session_id
+      end
+
+      def cleanup_expired_sessions_locked
+        now = Time.now
+        @sessions.delete_if { |_, v| now > v[:expires_at] }
+      end
+
+      def credentials_match?(username, password)
+        secure_compare(username.to_s, @auth_username) & secure_compare(password.to_s, @auth_password)
+      end
+
+      def secure_compare(a, b)
+        return false if a.nil? || b.nil?
+        a_digest = Digest::SHA256.digest(a)
+        b_digest = Digest::SHA256.digest(b)
+        result = 0
+        a_digest.bytes.zip(b_digest.bytes) { |x, y| result |= x ^ y }
+        result == 0
+      end
+
+      def url_decode(str)
+        str.gsub("+", " ").gsub(/%([0-9A-Fa-f]{2})/) { [$1.to_i(16)].pack("C") }
+      end
+
+      def parse_form_body(body)
+        params = {}
+        return params unless body
+        body.split("&").each do |pair|
+          key, value = pair.split("=", 2)
+          params[url_decode(key)] = url_decode(value || "")
+        end
+        params
+      end
+
+      def handle_login(client, headers)
+        content_length = headers["content-length"]&.to_i || 0
+        body = content_length > 0 ? client.read(content_length) : ""
+
+        params = parse_form_body(body)
+        username = params["username"]
+        password = params["password"]
+
+        if credentials_match?(username, password)
+          session_id = create_session
+          cookie = "#{SESSION_COOKIE_NAME}=#{session_id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=#{SESSION_TTL}"
+          write_redirect(client, "/", set_cookie: cookie)
+        else
+          serve_login_page(client, error: true)
+        end
+      end
+
+      def serve_login_page(client, error: false)
+        body = login_html(error: error)
+        write_response(client, 200, "OK", body)
+      end
+
+      def login_html(error: false)
+        error_html = error ? '<div class="login-error">Invalid username or password</div>' : ""
+        <<~HTML
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Login - AI Jig Utility</title>
+            <style>
+              *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+                background: #f5f5f5;
+                color: #333;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              }
+              .login-box {
+                background: #fff;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                padding: 2rem;
+                width: 100%;
+                max-width: 360px;
+              }
+              .login-box h1 {
+                font-size: 1.25rem;
+                font-weight: 600;
+                color: #555;
+                margin-bottom: 1.5rem;
+                text-align: center;
+              }
+              .login-field {
+                margin-bottom: 1rem;
+              }
+              .login-field label {
+                display: block;
+                font-size: 0.9rem;
+                font-weight: 500;
+                color: #555;
+                margin-bottom: 0.3rem;
+              }
+              .login-field input {
+                width: 100%;
+                padding: 0.6rem 0.8rem;
+                font-family: inherit;
+                font-size: 1rem;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                outline: none;
+                transition: border-color 0.15s;
+              }
+              .login-field input:focus { border-color: #888; }
+              .login-submit {
+                width: 100%;
+                padding: 0.6rem;
+                font-family: inherit;
+                font-size: 1rem;
+                font-weight: 500;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                background: #fff;
+                color: #333;
+                cursor: pointer;
+                transition: background 0.15s, border-color 0.15s;
+                margin-top: 0.5rem;
+              }
+              .login-submit:hover { background: #eee; border-color: #888; }
+              .login-error {
+                background: #fbe9e7;
+                color: #c62828;
+                border: 1px solid #ef9a9a;
+                border-radius: 6px;
+                padding: 0.6rem 1rem;
+                font-size: 0.9rem;
+                margin-bottom: 1rem;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="login-box">
+              <h1>AI Jig Utility</h1>
+              #{error_html}
+              <form method="POST" action="/auth/login">
+                <div class="login-field">
+                  <label for="username">Username</label>
+                  <input type="text" id="username" name="username" required autofocus>
+                </div>
+                <div class="login-field">
+                  <label for="password">Password</label>
+                  <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="login-submit">Login</button>
+              </form>
+            </div>
+          </body>
+          </html>
+        HTML
       end
 
       def serve_root(client)
@@ -969,9 +1191,18 @@ module Aijigu
       end
 
       def write_json_response(client, status, data)
-        reason = { 200 => "OK", 201 => "Created", 202 => "Accepted", 400 => "Bad Request", 404 => "Not Found", 500 => "Internal Server Error" }[status] || "OK"
+        reason = { 200 => "OK", 201 => "Created", 202 => "Accepted", 400 => "Bad Request", 401 => "Unauthorized", 404 => "Not Found", 500 => "Internal Server Error" }[status] || "OK"
         body = JSON.generate(data)
         write_response(client, status, reason, body, content_type: "application/json; charset=utf-8")
+      end
+
+      def write_redirect(client, location, set_cookie: nil)
+        client.print "HTTP/1.1 302 Found\r\n"
+        client.print "Location: #{location}\r\n"
+        client.print "Set-Cookie: #{set_cookie}\r\n" if set_cookie
+        client.print "Content-Length: 0\r\n"
+        client.print "Connection: close\r\n"
+        client.print "\r\n"
       end
 
       def write_response(client, status, reason, body, content_type: "text/html; charset=utf-8")
