@@ -21,6 +21,8 @@ fi
 AIJIGU_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export AIJIGU_ROOT
 
+source "$AIJIGU_ROOT/lib/prompts.bash"
+
 COMMAND="$1"
 shift
 
