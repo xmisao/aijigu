@@ -270,18 +270,39 @@ ${retry_prompt}"
     echo "--- Direction #${id}: retrying (attempt $((attempt + 1)))..." >&2
   done
 
-  # Slack notification: finished (include last_message if available)
+  # Slack notification: finished (include work notes from direction file)
   if [[ -n "${AIJIGU_SLACK_INCOMMING_WEBHOOK_URL:-}" ]]; then
     local last_msg=""
-    local last_msg_file="$last_message_dir/${id}.txt"
-    if [[ -f "$last_msg_file" ]]; then
-      last_msg="$(cat "$last_msg_file")"
-      # Trim leading/trailing whitespace
-      last_msg="$(printf '%s' "$last_msg" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-      # Truncate to 500 chars
-      if [[ "${#last_msg}" -gt 500 ]]; then
-        last_msg="${last_msg:0:500}..."
+
+    # Read work notes from direction file (check completed/ first, then original location)
+    local notes_source=""
+    local completed_file="$AIJIGU_DIRECTION_DIR/completed/$(basename "$match")"
+    if [[ -f "$completed_file" ]]; then
+      notes_source="$completed_file"
+    elif [[ -f "$match" ]]; then
+      notes_source="$match"
+    fi
+
+    if [[ -n "$notes_source" ]]; then
+      # Extract work notes: everything after the first --- separator
+      # Remove ## headings (e.g., "## 作業メモ" / "## Work Notes") and leading blank lines
+      last_msg="$(awk 'found{print} /^---$/{found=1}' "$notes_source" | sed '/^## /d' | sed -n '/[^ \t]/,$p')"
+      # Trim trailing whitespace
+      last_msg="$(printf '%s' "$last_msg" | sed 's/[[:space:]]*$//')"
+    fi
+
+    # Fallback to last_message file if no work notes found
+    if [[ -z "$last_msg" ]]; then
+      local last_msg_file="$last_message_dir/${id}.txt"
+      if [[ -f "$last_msg_file" ]]; then
+        last_msg="$(cat "$last_msg_file")"
+        last_msg="$(printf '%s' "$last_msg" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
       fi
+    fi
+
+    # Truncate to 500 chars
+    if [[ "${#last_msg}" -gt 500 ]]; then
+      last_msg="${last_msg:0:500}..."
     fi
 
     local slack_msg
