@@ -145,8 +145,19 @@ command_direction_run() {
     exit 1
   fi
 
-  local prompt
-  prompt="Complete the direction #${id}.
+  local max_retries="${AIJIGU_DIRECTION_INTERNAL_RETRY:-}"
+  local attempt=0
+  local run_exit=0
+  local last_message_dir="$AIJIGU_DIRECTION_DIR/.last_messages"
+  mkdir -p "$last_message_dir"
+  local -a attempt_summaries=()
+
+  while true; do
+    attempt=$((attempt + 1))
+
+    # --- Step 1: Execute the direction ---
+    local prompt
+    prompt="Complete the direction #${id}.
 
 The direction file is located at: ${match}
 The completed directory is: ${AIJIGU_DIRECTION_DIR}/completed
@@ -163,25 +174,80 @@ If you cannot complete the work, still follow the same steps to record what was 
 Never use Plan mode.
 The user will not provide any additional instructions or approvals. Work autonomously."
 
-  # Run claude, capturing stream-json output to extract last message
-  local tmp_stream
-  tmp_stream="$(mktemp)"
+    if [[ $attempt -gt 1 ]]; then
+      prompt+="
 
-  set +e
-  CLAUDECODE= claude -p "$prompt" --output-format stream-json --verbose --dangerously-skip-permissions "$@" | tee "$tmp_stream"
-  local run_exit=${PIPESTATUS[0]}
-  set -e
+This is retry attempt #${attempt}. The direction file may contain work notes from previous attempts. Review them and continue from where the previous attempt left off."
+    fi
 
-  # Extract and save last message from stream-json result event
-  local last_message_dir="$AIJIGU_DIRECTION_DIR/.last_messages"
-  mkdir -p "$last_message_dir"
-  local result_text
-  result_text="$(jq -r 'select(.type == "result") | .result // ""' "$tmp_stream" 2>/dev/null | tail -1 || true)"
-  if [[ -n "$result_text" ]]; then
-    printf '%s\n' "$result_text" > "$last_message_dir/${id}.txt"
-  fi
+    local tmp_stream
+    tmp_stream="$(mktemp)"
 
-  rm -f "$tmp_stream"
+    set +e
+    CLAUDECODE= claude -p "$prompt" --output-format stream-json --verbose --dangerously-skip-permissions "$@" | tee "$tmp_stream"
+    run_exit=${PIPESTATUS[0]}
+    set -e
+
+    # Extract and save last message from stream-json result event
+    local result_text
+    result_text="$(jq -r 'select(.type == "result") | .result // ""' "$tmp_stream" 2>/dev/null | tail -1 || true)"
+    if [[ -n "$result_text" ]]; then
+      printf '%s\n' "$result_text" > "$last_message_dir/${id}.txt"
+    fi
+    rm -f "$tmp_stream"
+
+    # --- Step 2: Judge completion ---
+
+    # 2a. Check if direction file was moved to completed/
+    if [[ -f "$AIJIGU_DIRECTION_DIR/completed/$(basename "$match")" ]]; then
+      break
+    fi
+
+    # 2b. Check hard retry limit from AIJIGU_DIRECTION_INTERNAL_RETRY
+    if [[ -n "$max_retries" ]] && [[ $attempt -ge $max_retries ]]; then
+      echo "--- Retry limit (${max_retries}) reached for direction #${id}" >&2
+      break
+    fi
+
+    # 2c. Track attempt summaries and ask Claude to judge retry vs stop
+    local summary="${result_text:0:200}"
+    attempt_summaries+=("$summary")
+
+    local history=""
+    for i in "${!attempt_summaries[@]}"; do
+      history+="Attempt $((i+1)): ${attempt_summaries[$i]}
+"
+    done
+
+    local judge_result
+    set +e
+    judge_result="$(CLAUDECODE= claude -p "You are judging whether a direction execution should be retried.
+
+Direction #${id} was executed ${attempt} time(s) but the direction file was NOT moved to the completed directory, meaning the work may not be fully done.
+
+Execution history (last message summaries):
+${history}
+Decision rules:
+- RETRY if the execution made progress and more work remains.
+- DONE if the execution seems stuck in an infinite loop (similar messages repeating across attempts without meaningful progress).
+- DONE if a fatal or unrecoverable error occurred that retrying will not fix.
+- DONE if attempt count is already high (currently ${attempt}) without clear progress.
+
+Respond with exactly one word: RETRY or DONE." \
+      --output-format text --dangerously-skip-permissions 2>/dev/null)"
+    set -e
+
+    local answer
+    answer="$(echo "$judge_result" | grep -oE '(RETRY|DONE)' | head -1)"
+
+    if [[ "$answer" != "RETRY" ]]; then
+      echo "--- Direction #${id}: stopping after attempt ${attempt} (judged as not making progress)" >&2
+      break
+    fi
+
+    echo "--- Direction #${id}: retrying (attempt $((attempt + 1)))..." >&2
+  done
+
   exit "$run_exit"
 }
 
